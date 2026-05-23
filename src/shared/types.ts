@@ -764,18 +764,20 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 // -----------------------------------------------------------------------------
-// Panel size constants — from CanvasLayoutEngine.swift
+// Panel size constants — derived from the panel registry so the sizes for a
+// new panel type are declared in one place. Kept as named exports so existing
+// call sites can keep importing them.
 // -----------------------------------------------------------------------------
 
-export const PANEL_DEFAULT_SIZES: Record<PanelType, Size> = {
-  terminal: { width: 640, height: 400 },
-  browser: { width: 800, height: 600 },
-  editor: { width: 600, height: 500 },
-  git: { width: 500, height: 600 },
-  fileExplorer: { width: 300, height: 500 },
-  projectList: { width: 300, height: 400 },
-  canvas: { width: 800, height: 600 },
-}
+import { PANEL_DEFINITIONS } from './panels'
+
+export const PANEL_DEFAULT_SIZES: Record<PanelType, Size> = Object.fromEntries(
+  (Object.keys(PANEL_DEFINITIONS) as PanelType[]).map((t) => [t, PANEL_DEFINITIONS[t].defaultSize]),
+) as Record<PanelType, Size>
+
+export const PANEL_MINIMUM_SIZES: Record<PanelType, Size> = Object.fromEntries(
+  (Object.keys(PANEL_DEFINITIONS) as PanelType[]).map((t) => [t, PANEL_DEFINITIONS[t].minimumSize]),
+) as Record<PanelType, Size>
 
 // Compact sizes used when a panel is dropped onto the canvas from a non-
 // canvas-node source (e.g. a tab dragged out of a side/main dock window).
@@ -789,16 +791,6 @@ export const PANEL_CANVAS_DROP_SIZES: Record<PanelType, Size> = {
   fileExplorer: { width: 280, height: 440 },
   projectList: { width: 280, height: 360 },
   canvas: { width: 640, height: 480 },
-}
-
-export const PANEL_MINIMUM_SIZES: Record<PanelType, Size> = {
-  terminal: { width: 320, height: 200 },
-  browser: { width: 400, height: 300 },
-  editor: { width: 300, height: 250 },
-  git: { width: 350, height: 300 },
-  fileExplorer: { width: 180, height: 200 },
-  projectList: { width: 180, height: 200 },
-  canvas: { width: 400, height: 300 },
 }
 
 // -----------------------------------------------------------------------------
