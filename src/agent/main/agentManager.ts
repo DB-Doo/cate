@@ -41,14 +41,11 @@ import { AGENT_EVENT } from '../../shared/ipc-channels'
 import { installSubagentExtension } from './installSubagents'
 import { installPlanModeExtension } from './installPlanMode'
 import type { AuthManager } from './authManager'
+import { unpackedAppPath } from './paths'
 
-// `RpcClient` spawns `node <cliPath> --mode rpc`. Pi's package only exports
-// the `.` subpath, so we can't `require.resolve('.../dist/cli.js')` — instead
-// we anchor on the app root. Once packaged we'll need to ship cli.js via
-// electron-builder's `extraResources` and read from `process.resourcesPath`.
 function resolvePiCliPath(): string {
   return path.join(
-    app.getAppPath(),
+    unpackedAppPath(),
     'node_modules',
     '@earendil-works',
     'pi-coding-agent',

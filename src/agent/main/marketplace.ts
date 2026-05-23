@@ -19,6 +19,7 @@ import path from 'path'
 import { spawn } from 'child_process'
 import { app } from 'electron'
 import log from '../../main/logger'
+import { unpackedAppPath } from './paths'
 
 export interface MarketplaceEntry {
   name: string
@@ -55,11 +56,8 @@ function settingsPath(): string {
 }
 
 function piBinaryPath(): string {
-  // node_modules/.bin/pi exists in dev. Once packaged, electron-builder needs
-  // to ship the pi CLI similarly; we anchor on app.getAppPath() the same way
-  // installSubagents.ts and agentManager.ts do.
   const binName = process.platform === 'win32' ? 'pi.cmd' : 'pi'
-  return path.join(app.getAppPath(), 'node_modules', '.bin', binName)
+  return path.join(unpackedAppPath(), 'node_modules', '.bin', binName)
 }
 
 /** Heuristic: pi extensions that call ctx.ui.custom(...) need a real terminal
