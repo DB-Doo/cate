@@ -11,6 +11,8 @@ import { terminalRestoreData } from '../lib/session'
 import { DragOverlay, setupCrossWindowDragListeners, useDragOp } from '../drag'
 import { renderPanelComponent, getPanelDef } from '../panels/registry'
 import { getOrCreateCanvasStoreForPanel } from '../stores/canvasStore'
+import { useSettingsStore } from '../stores/settingsStore'
+import { applyTheme } from '../lib/themeManager'
 
 interface PanelWindowShellProps {
   panelType?: string
@@ -21,6 +23,16 @@ interface PanelWindowShellProps {
 export default function PanelWindowShell({ panelType, panelId, workspaceId }: PanelWindowShellProps) {
   const [panel, setPanel] = useState<PanelState | null>(null)
   const [receivedSnapshot, setReceivedSnapshot] = useState<PanelTransferSnapshot | null>(null)
+
+  // Hydrate settings + apply theme so this window mirrors the main app's
+  // appearance and settings (theme, minimap, canvas grid, etc.).
+  useEffect(() => {
+    useSettingsStore.getState().loadSettings()
+  }, [])
+  const appearanceMode = useSettingsStore((s) => s.appearanceMode)
+  useEffect(() => {
+    applyTheme(appearanceMode)
+  }, [appearanceMode])
 
   // Listen for incoming panel transfers from the main process
   useEffect(() => {

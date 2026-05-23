@@ -369,6 +369,12 @@ export function createCanvasStore(): UseBoundStore<StoreApi<CanvasStore>> {
   },
 
   addNode(panelId, panelType, position?, size?) {
+    // Canvas-on-canvas is unsupported and produces broken interaction (nested
+    // zoom, ambiguous drag targets, duplicate stores keyed by the same id).
+    // Refuse at the data layer regardless of which UI path tried it.
+    if (panelType === 'canvas') {
+      return ''
+    }
     get().pushHistory()
     const state = get()
     const defaultSize = size ?? PANEL_DEFAULT_SIZES[panelType]

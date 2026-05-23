@@ -17,6 +17,8 @@ import { getOrCreateCanvasStoreForPanel } from '../stores/canvasStore'
 import { confirmCloseDirtyPanels } from '../lib/confirmCloseDirty'
 import { isDockEmpty } from './dockEmpty'
 import { shouldCloseDockWindow } from './shouldCloseDockWindow'
+import { useSettingsStore } from '../stores/settingsStore'
+import { applyTheme } from '../lib/themeManager'
 
 import { renderPanelComponent, PANEL_REGISTRY } from '../panels/registry'
 const CanvasPanel = PANEL_REGISTRY.canvas.Component
@@ -32,6 +34,17 @@ export default function DockWindowShell({ workspaceId: initialWorkspaceId }: Doc
   const dockStore = useMemo(() => createDockStore(), [])
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const hadPanelsRef = useRef(false)
+
+  // Hydrate settings + apply theme so the detached window mirrors the main
+  // app's appearance (theme, minimap, canvas grid, etc.). Without this the
+  // window renders with default settings and ignores the user's preferences.
+  useEffect(() => {
+    useSettingsStore.getState().loadSettings()
+  }, [])
+  const appearanceMode = useSettingsStore((s) => s.appearanceMode)
+  useEffect(() => {
+    applyTheme(appearanceMode)
+  }, [appearanceMode])
 
   // Listen for DOCK_WINDOW_INIT from main process
   useEffect(() => {
@@ -87,6 +100,10 @@ export default function DockWindowShell({ workspaceId: initialWorkspaceId }: Doc
   // Set up cross-window drag listeners
   useEffect(() => {
     return setupCrossWindowDragListeners((snapshot, target) => {
+      // Canvas-on-canvas is unsupported: refuse cross-window drops of a
+      // canvas panel onto a canvas target.
+      if (snapshot.panel.type === 'canvas' && target.kind !== 'dock') return
+
       // PTY transfer MUST be deposited before any state set that mounts TerminalPanel.
       if (snapshot.terminalPtyId) {
         terminalRegistry.setPendingTransfer(snapshot.panel.id, snapshot.terminalPtyId, snapshot.terminalScrollback)

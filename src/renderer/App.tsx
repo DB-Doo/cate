@@ -315,6 +315,10 @@ function MainApp() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     return setupCrossWindowDragListeners((snapshot, target) => {
+      // Canvas-on-canvas is unsupported: refuse cross-window drops of a
+      // canvas panel onto a canvas target. The source window stays as-is.
+      if (snapshot.panel.type === 'canvas' && target.kind !== 'dock') return
+
       // PTY transfer MUST be deposited before any state set that mounts TerminalPanel.
       if (snapshot.terminalPtyId) {
         terminalRegistry.setPendingTransfer(snapshot.panel.id, snapshot.terminalPtyId, snapshot.terminalScrollback)

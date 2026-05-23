@@ -48,6 +48,9 @@ export async function commitDrop(
     }
 
     case 'canvas-add': {
+      // Canvas-on-canvas is unsupported — refuse the drop instead of removing
+      // the panel from its source (which would silently delete a canvas tab).
+      if (panel.type === 'canvas') return
       ctx.prepareLocalRemount?.(source.panelId, panel.type)
       // Remove the panel from its current location first so addNode doesn't
       // race with a stale duplicate (terminal PTY, xterm DOM, etc.).

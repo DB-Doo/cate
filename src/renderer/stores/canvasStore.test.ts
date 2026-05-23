@@ -65,3 +65,16 @@ describe('canvasStore.addNode panelId dedup invariant', () => {
     expect(nodes.some((n) => n.panelId === 'panel-B')).toBe(true)
   })
 })
+
+// Regression: a canvas tab dragged onto a canvas viewport (or any other path
+// that reached addNode with panelType==='canvas') used to create a nested
+// canvas — broken interaction (ambiguous drag targets, duplicate stores keyed
+// by the same id, nested zoom). Block at the data layer.
+describe('canvasStore.addNode — canvas-on-canvas is rejected', () => {
+  it('returns empty string and does not add the node', () => {
+    const store = createCanvasStore()
+    const result = store.getState().addNode('panel-canvas-1', 'canvas', { x: 10, y: 10 }, { width: 400, height: 300 })
+    expect(result).toBe('')
+    expect(Object.keys(store.getState().nodes)).toHaveLength(0)
+  })
+})
