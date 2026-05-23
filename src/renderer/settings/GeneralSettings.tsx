@@ -22,9 +22,15 @@ export function GeneralSettings() {
       )}
       <SettingRow
         label="Send crash reports"
-        description="Anonymously report unhandled errors to help us fix bugs. Takes effect on next launch."
+        description="Anonymously report unhandled errors to help us fix bugs."
       >
         <Toggle checked={store.crashReportingEnabled} onChange={(v) => store.setSetting('crashReportingEnabled', v)} />
+      </SettingRow>
+      <SettingRow
+        label="Send anonymous usage data"
+        description="App version, OS, and update events — no file paths, project names, or personal data. Helps us see which versions are in use and prompt for feedback after upgrades."
+      >
+        <Toggle checked={store.usageAnalyticsEnabled} onChange={(v) => store.setSetting('usageAnalyticsEnabled', v)} />
       </SettingRow>
     </div>
   )

@@ -18,8 +18,8 @@
   --titlebar-bg: #232220;
   --canvas-bg: #161513;
   --canvas-bg-alt: #1c1b19;
-  --grid-dot: rgba(255, 255, 255, 0.045);
-  --grid-line: rgba(255, 255, 255, 0.02);
+  --grid-dot: rgba(255, 255, 255, 0.077);
+  --grid-line: rgba(255, 255, 255, 0.03);
   --border-subtle: rgba(255, 255, 255, 0.05);
   --border-strong: rgba(255, 255, 255, 0.10);
   --border-focus: #4a9eff;
@@ -43,6 +43,15 @@
   --git-deleted: #ff453a;
   --git-untracked: #4a9eff;
   --git-renamed: #bf5af2;
+  /* Minimap panel rects — muted variants tinted toward the active theme.
+     :root mirrors dark-warm for any un-themed render. */
+  --panel-terminal: #4a9960;
+  --panel-browser: #4a7ab0;
+  --panel-editor: #b07440;
+  --panel-git: #b04438;
+  --panel-fileExplorer: #4a8fb0;
+  --panel-projectList: #b09640;
+  --panel-canvas: #8857b0;
 }
 
 [data-theme="dark-warm"] {
@@ -56,8 +65,8 @@
   --titlebar-bg: #232220;
   --canvas-bg: #161513;
   --canvas-bg-alt: #1c1b19;
-  --grid-dot: rgba(255, 255, 255, 0.045);
-  --grid-line: rgba(255, 255, 255, 0.02);
+  --grid-dot: rgba(255, 255, 255, 0.077);
+  --grid-line: rgba(255, 255, 255, 0.03);
   --border-subtle: rgba(255, 255, 255, 0.05);
   --border-strong: rgba(255, 255, 255, 0.10);
   --border-focus: #4a9eff;
@@ -81,6 +90,14 @@
   --git-deleted: #ff453a;
   --git-untracked: #4a9eff;
   --git-renamed: #bf5af2;
+  /* Minimap panel rects — warm-tinted muted variants. */
+  --panel-terminal: #4a9960;
+  --panel-browser: #4a7ab0;
+  --panel-editor: #b07440;
+  --panel-git: #b04438;
+  --panel-fileExplorer: #4a8fb0;
+  --panel-projectList: #b09640;
+  --panel-canvas: #8857b0;
 }
 
 [data-theme="light-subtle"] {
@@ -124,6 +141,13 @@
   --git-deleted: #dc322f;
   --git-untracked: #3c7ef0;
   --git-renamed: #5e747f;
+  --panel-terminal: #2f8f3f;
+  --panel-browser: #2b5fbf;
+  --panel-editor: #c46900;
+  --panel-git: #c0382e;
+  --panel-fileExplorer: #2e8fbf;
+  --panel-projectList: #a07a00;
+  --panel-canvas: #7d3ab8;
 }
 
 [data-theme="dark-cold"] {
@@ -138,8 +162,8 @@
   --titlebar-bg: #1f1f22;
   --canvas-bg: #0e0e10;
   --canvas-bg-alt: #141416;
-  --grid-dot: rgba(235, 235, 245, 0.04);
-  --grid-line: rgba(235, 235, 245, 0.017);
+  --grid-dot: rgba(235, 235, 245, 0.07);
+  --grid-line: rgba(235, 235, 245, 0.025);
   --border-subtle: rgba(235, 235, 245, 0.06);
   --border-strong: rgba(235, 235, 245, 0.12);
   --border-focus: #0a84ff;
@@ -163,6 +187,14 @@
   --git-deleted: #ff453a;
   --git-untracked: #0a84ff;
   --git-renamed: #bf5af2;
+  /* Minimap panel rects — cool/neutral muted variants, no warm undertone. */
+  --panel-terminal: #3a8a6e;
+  --panel-browser: #4a7ec7;
+  --panel-editor: #a86838;
+  --panel-git: #a83c34;
+  --panel-fileExplorer: #4aa0c7;
+  --panel-projectList: #a08840;
+  --panel-canvas: #7a5cc7;
 }
 
 /* Semantic utility classes. Declared directly (not via Tailwind colors) so

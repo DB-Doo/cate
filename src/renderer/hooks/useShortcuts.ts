@@ -100,10 +100,12 @@ export function useShortcuts(): void {
           break
         }
         case 'toggleMinimap':
-          useSettingsStore.getState().setSetting(
-            'showMinimap',
-            !useSettingsStore.getState().showMinimap,
-          )
+          // Only toggles the popover when the minimap feature is enabled in
+          // settings; if disabled, the shortcut is a no-op (matches the
+          // hidden-button state).
+          if (useSettingsStore.getState().showMinimap) {
+            useUIStore.getState().toggleMinimapOpen()
+          }
           break
         case 'nodeSwitcher':
           useUIStore.getState().setShowNodeSwitcher(true)

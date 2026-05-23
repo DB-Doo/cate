@@ -6,6 +6,7 @@ import { initRendererSentry } from './lib/sentry'
 import App from './App'
 import { subscribeToOsNotificationClicks } from './lib/osNotifications'
 import './styles/globals.css'
+import '@xterm/xterm/css/xterm.css'
 
 // Listen for OS notification clicks (focus the originating terminal).
 subscribeToOsNotificationClicks()

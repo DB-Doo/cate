@@ -19,6 +19,7 @@ import {
 import Minimap from './Minimap'
 import { useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useUIStore } from '../stores/uiStore'
 import { UpdateButton } from './UpdateButton'
 
 interface CanvasToolbarProps {
@@ -86,7 +87,8 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
 }) => {
   const canvasApi = useCanvasStoreApi()
   const showMinimap = useSettingsStore((s) => s.showMinimap)
-  const saveSetting = useSettingsStore((s) => s.saveSetting)
+  const minimapOpen = useUIStore((s) => s.minimapOpen)
+  const toggleMinimapOpen = useUIStore((s) => s.toggleMinimapOpen)
   const zoomText = `${Math.round(zoom * 100)}%`
 
   const [menuOpen, setMenuOpen] = useState(false)
@@ -201,76 +203,78 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
 
     {/* Minimap — standalone pill button anchored to the bottom-right corner.
         The right offset includes the right sidebar width so the button stays
-        visible when the overlay sidebar is expanded. */}
+        visible when the overlay sidebar is expanded. The entire minimap UI
+        (button + popover) is gated by the `showMinimap` setting. */}
     <div
       className="absolute bottom-4 z-50 flex items-center gap-2"
       style={{ right: 'calc(1rem + var(--cate-right-sidebar-width, 0px))' }}
     >
       <UpdateButton />
-      <div className="relative">
-        <div className="rounded-full border border-strong bg-surface-6 shadow-[0_8px_24px_-6px_var(--shadow-node)]">
-          <div className="flex items-center p-1.5">
-            <ToolbarButton
-              onClick={() => saveSetting('showMinimap', !showMinimap)}
-              title={showMinimap ? 'Hide minimap' : 'Show minimap'}
-              size="panel"
-              active={showMinimap}
+      {showMinimap && (
+        <div className="relative" data-testid="minimap-toggle">
+          <div className="rounded-full border border-strong bg-surface-6 shadow-[0_8px_24px_-6px_var(--shadow-node)]">
+            <div className="flex items-center p-1.5">
+              <ToolbarButton
+                onClick={toggleMinimapOpen}
+                title={minimapOpen ? 'Hide minimap' : 'Show minimap'}
+                size="panel"
+                active={minimapOpen}
+              >
+                <MapTrifold size={14} />
+              </ToolbarButton>
+            </div>
+          </div>
+          {minimapOpen && (
+            <div
+              className="absolute right-0 bottom-full mb-2 rounded-lg overflow-hidden shadow-[0_18px_40px_-12px_var(--shadow-node)]"
             >
-              <MapTrifold size={14} />
-            </ToolbarButton>
-          </div>
+              <Minimap mode="popover" />
+            </div>
+          )}
+          {minimapOpen && (
+            <>
+              {/* Border triangle (slightly larger, underneath) */}
+              <div
+                aria-hidden
+                className="absolute left-1/2 -translate-x-1/2 bottom-full"
+                style={{
+                  marginBottom: 1,
+                  width: 0,
+                  height: 0,
+                  borderLeft: '7px solid transparent',
+                  borderRight: '7px solid transparent',
+                  borderTop: '7px solid var(--border-subtle)',
+                }}
+              />
+              {/* Fill triangle (on top, 1px inset) */}
+              <div
+                aria-hidden
+                className="absolute left-1/2 -translate-x-1/2 bottom-full"
+                style={{
+                  marginBottom: 2,
+                  width: 0,
+                  height: 0,
+                  borderLeft: '6px solid transparent',
+                  borderRight: '6px solid transparent',
+                  borderTop: '6px solid var(--surface-2)',
+                }}
+              />
+              {/* Notch — covers the 1px popover border across the tail's width so
+                  the tail visually connects to the popover without a seam line. */}
+              <div
+                aria-hidden
+                className="absolute left-1/2 -translate-x-1/2 bottom-full"
+                style={{
+                  marginBottom: 8,
+                  width: 12,
+                  height: 1,
+                  background: 'var(--surface-2)',
+                }}
+              />
+            </>
+          )}
         </div>
-        {showMinimap && (
-          <div
-            data-theme="dark-warm"
-            className="absolute right-0 bottom-full mb-2 rounded-lg overflow-hidden shadow-[0_18px_40px_-12px_var(--shadow-node)]"
-          >
-            <Minimap mode="popover" />
-          </div>
-        )}
-        {showMinimap && (
-          <>
-            {/* Border triangle (slightly larger, underneath) */}
-            <div
-              aria-hidden
-              className="absolute left-1/2 -translate-x-1/2 bottom-full"
-              style={{
-                marginBottom: 1,
-                width: 0,
-                height: 0,
-                borderLeft: '7px solid transparent',
-                borderRight: '7px solid transparent',
-                borderTop: '7px solid var(--border-subtle)',
-              }}
-            />
-            {/* Fill triangle (on top, 1px inset) */}
-            <div
-              aria-hidden
-              className="absolute left-1/2 -translate-x-1/2 bottom-full"
-              style={{
-                marginBottom: 2,
-                width: 0,
-                height: 0,
-                borderLeft: '6px solid transparent',
-                borderRight: '6px solid transparent',
-                borderTop: '6px solid var(--surface-2)',
-              }}
-            />
-            {/* Notch — covers the 1px popover border across the tail's width so
-                the tail visually connects to the popover without a seam line. */}
-            <div
-              aria-hidden
-              className="absolute left-1/2 -translate-x-1/2 bottom-full"
-              style={{
-                marginBottom: 8,
-                width: 12,
-                height: 1,
-                background: 'var(--surface-2)',
-              }}
-            />
-          </>
-        )}
-      </div>
+      )}
     </div>
     </>
   )

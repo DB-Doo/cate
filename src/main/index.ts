@@ -29,8 +29,8 @@ import { addAllowedRoot, clearScopedWriteAllowancesForWindow, validatePath } fro
 import { buildApplicationMenu, rebuildApplicationMenu, setNewMainWindowFn } from './menu'
 import { initShellEnv } from './shellEnv'
 import { initAutoUpdater, isInstallingUpdate } from './auto-updater'
-import { initSentry } from './sentry'
-import { saveCrashReport, checkPendingCrashReport } from './crashReporter'
+import { initSentry, captureMainException } from './sentry'
+import { initAnalytics, trackAppStart, checkAndReportUpdate } from './analytics'
 import { beginTerminalTransfer, acknowledgeTerminalTransfer, handleCrossWindowDropTerminalTransfer } from './ipc/terminal'
 import type { CateWindowParams, DockWindowInitPayload, PanelState, PanelTransferSnapshot, WindowDockState } from '../shared/types'
 import { disableRendererSandbox, disableTrustScoping } from './featureFlags'
@@ -1019,6 +1019,7 @@ loadSettingsSyncFromDisk()
 // is honored) but before any IPC handlers or windows. No-op if DSN unset or
 // the user has disabled crash reporting.
 initSentry()
+initAnalytics()
 
 // Provide the menu module a way to spawn additional main windows without
 // importing this file (which would create a circular dependency).
@@ -1040,7 +1041,7 @@ function emergencyKillPTYs(): void {
 // process exit. Also kill PTY process groups so dev servers don't survive.
 process.on('uncaughtException', (err) => {
   log.error('uncaughtException: %O', err)
-  saveCrashReport(err, 'main')
+  captureMainException(err)
   emergencyKillPTYs()
   process.exit(1)
 })
@@ -1120,12 +1121,10 @@ app.whenReady().then(async () => {
     registerDeferredHandlers()
     log.info('Deferred IPC handlers registered')
     initAutoUpdater()
-    // Skip the crash-report prompt in development — dev sessions hit a
-    // lot of transient renderer errors while iterating, and those
-    // shouldn't interrupt every launch with a "Cate crashed" dialog.
-    if (app.isPackaged) {
-      checkPendingCrashReport().catch((err) => log.warn('Crash report check failed:', err))
-    }
+    // Detect a version change since last launch and emit an app_updated event
+    // before app_start, so the upgrade path lands in analytics in order.
+    checkAndReportUpdate(mainWin).catch((err) => log.warn('Update detection failed:', err))
+    trackAppStart()
     if (process.env.CATE_SMOKE_TEST === '1') {
       runSmokeAssertions(mainWin)
         .then(() => app.exit(0))

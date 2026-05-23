@@ -23,6 +23,10 @@ export function useNodeResizeCursor(
       }
       if (e.button !== 0) return
       if (!nodeRef.current || !node) return
+      // First-gesture-wins: if a drag has already begun (e.g. via DockTabBar
+      // mousedown that bubbled here from the tab-bar edge), do not also
+      // start a resize on the same gesture.
+      if (document.body.classList.contains('canvas-dragging')) return
 
       const rect = nodeRef.current.getBoundingClientRect()
       const localX = e.clientX - rect.left

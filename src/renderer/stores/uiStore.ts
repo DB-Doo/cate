@@ -53,6 +53,10 @@ interface UIStoreState {
   showPanelSwitcher: boolean
   showGlobalSearch: boolean
   showLayoutsDialog: boolean
+  /** Whether the minimap popover is currently open. Distinct from the
+   *  `showMinimap` setting which controls whether the minimap feature
+   *  (button + popover) is available at all. */
+  minimapOpen: boolean
   showSettings: boolean
   /** Optional initial settings tab to open when showSettings flips to true. */
   settingsInitialTab: string | null
@@ -77,6 +81,8 @@ interface UIStoreActions {
   setShowPanelSwitcher: (show: boolean) => void
   setShowGlobalSearch: (show: boolean) => void
   setShowLayoutsDialog: (show: boolean) => void
+  setMinimapOpen: (open: boolean) => void
+  toggleMinimapOpen: () => void
   openSettings: (initialTab?: string) => void
   closeSettings: () => void
   toggleSidebar: () => void
@@ -103,6 +109,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
   panelSwitcherScreenshot: null,
   showGlobalSearch: false,
   showLayoutsDialog: false,
+  minimapOpen: false,
   showSettings: false,
   settingsInitialTab: null,
   fileExplorerVisible: false,
@@ -132,6 +139,14 @@ export const useUIStore = create<UIStore>((set, get) => ({
 
   setShowLayoutsDialog(show) {
     set({ showLayoutsDialog: show })
+  },
+
+  setMinimapOpen(open) {
+    set({ minimapOpen: open })
+  },
+
+  toggleMinimapOpen() {
+    set({ minimapOpen: !get().minimapOpen })
   },
 
   openSettings(initialTab) {

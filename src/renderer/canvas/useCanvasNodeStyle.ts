@@ -100,6 +100,10 @@ export function useCanvasNodeStyle(args: StyleArgs) {
   const glowStyle = useMemo<React.CSSProperties | null>(() => {
     if (!node) return null
     if (!(isFocused || isSelected)) return null
+    // Hide the focus glow while the node is the drag source — the source node
+    // itself is hidden (containerStyle.opacity = 0 above) and the glow would
+    // otherwise float at the node's original origin while the ghost moves.
+    if (isWholeNodeDragSource) return null
     const isEntering = node.animationState === 'entering'
     const isExiting = node.animationState === 'exiting'
     const layoutTransition = isAnimatingLayout
@@ -119,7 +123,7 @@ export function useCanvasNodeStyle(args: StyleArgs) {
       opacity: isEntering || isExiting ? 0 : 1,
       transition: `${layoutTransition}transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 150ms ease-out`,
     }
-  }, [node, isFocused, isSelected, isAnimatingLayout])
+  }, [node, isFocused, isSelected, isAnimatingLayout, isWholeNodeDragSource])
 
   return { containerStyle, glowStyle }
 }

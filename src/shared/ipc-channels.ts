@@ -12,6 +12,7 @@ export const TERMINAL_EXIT = 'terminal:exit' // main -> renderer
 export const TERMINAL_GET_CWD = 'terminal:getCwd'
 export const TERMINAL_LOG_READ = 'terminal:logRead'
 export const TERMINAL_SCROLLBACK_SAVE = 'terminal:scrollbackSave'
+export const TERMINAL_SET_VISIBILITY = 'terminal:setVisibility'
 
 // Filesystem
 export const FS_READ_FILE = 'fs:readFile'
@@ -94,6 +95,14 @@ export const UPDATE_STATUS = 'update:status'
 export const UPDATE_INSTALL = 'update:install'
 export const UPDATE_DOWNLOAD = 'update:download'
 export const UPDATE_OPEN_RELEASE = 'update:openRelease'
+
+// Analytics — post-update feedback prompt
+// Main -> renderer: show the modal. Payload: { fromVersion, toVersion }
+export const ANALYTICS_FEEDBACK_PROMPT = 'analytics:feedbackPrompt'
+// Renderer -> main: user submitted feedback. Payload: { rating: 1-5, comment? }
+export const ANALYTICS_FEEDBACK_SUBMIT = 'analytics:feedbackSubmit'
+// Renderer -> main: user dismissed the modal without submitting.
+export const ANALYTICS_FEEDBACK_DISMISS = 'analytics:feedbackDismiss'
 
 
 // Menu actions (main -> renderer)

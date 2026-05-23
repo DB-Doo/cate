@@ -288,7 +288,7 @@ export function initAutoUpdater(): void {
     })
   }, 5000)
 
-  // Check every 4 hours
+  // Check every hour
   setInterval(
     () => {
       autoUpdater.checkForUpdates().catch((err) => {
@@ -296,7 +296,7 @@ export function initAutoUpdater(): void {
         fallbackCheckForUpdate(false)
       })
     },
-    4 * 60 * 60 * 1000,
+    60 * 60 * 1000,
   )
 }
 

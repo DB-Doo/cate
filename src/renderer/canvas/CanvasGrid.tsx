@@ -1,25 +1,24 @@
 // =============================================================================
-// CanvasGrid — screen-space CSS-background dot grid.
+// CanvasGrid — screen-space CSS-background grid (dots or lines).
 //
-// Renders OUTSIDE the world's transform so dots always land on whole device
-// pixels and look identical at every zoom level. The pattern step is computed
-// in screen px (BASE_SPACING * zoom), and we use background-position to slide
+// Renders OUTSIDE the world's transform so the pattern always lands on whole
+// device pixels and looks identical at every zoom level. The pattern step is
+// computed in screen px (BASE_SPACING * zoom), and background-position slides
 // the pattern with the pan offset.
 //
 // Performance: viewportOffset is subscribed imperatively (no React re-render
-// during pan). Only zoom/container changes trigger re-render.
+// during pan). Only zoom/style/container changes trigger re-render.
 // =============================================================================
 
 import React, { useRef, useEffect } from 'react'
 import { useCanvasStoreContext, useCanvasStoreApi } from '../stores/CanvasStoreContext'
+import { useSettingsStore } from '../stores/settingsStore'
 
 interface CanvasGridProps {
   containerWidth: number
   containerHeight: number
 }
 
-// Fixed canvas-space spacing for the dot pattern. No user setting — the grid
-// is purely decorative and snapping was removed, so a single value is fine.
 const BASE_SPACING = 20
 
 const CanvasGrid: React.FC<CanvasGridProps> = ({
@@ -28,6 +27,7 @@ const CanvasGrid: React.FC<CanvasGridProps> = ({
 }) => {
   const zoom = useCanvasStoreContext((s) => s.zoomLevel)
   const canvasApi = useCanvasStoreApi()
+  const style = useSettingsStore((s) => s.canvasGridStyle)
 
   const divRef = useRef<HTMLDivElement>(null)
 
@@ -47,14 +47,20 @@ const CanvasGrid: React.FC<CanvasGridProps> = ({
     return unsubscribe
   }, [canvasApi, zoom])
 
-  // LOD: when zoomed out, the on-screen step would get too small and the dots
-  // crowd into moiré. Double the canvas-space spacing until the screen step
-  // is comfortably readable.
+  if (style === 'none') return null
+
+  // LOD: when zoomed out, the on-screen step would get too small. Double the
+  // canvas-space spacing until the screen step is comfortably readable.
   const MIN_SCREEN_STEP = 16
   let canvasStep = BASE_SPACING
   while (canvasStep * zoom < MIN_SCREEN_STEP) canvasStep *= 2
   const step = canvasStep * zoom
   const initialOffset = canvasApi.getState().viewportOffset
+
+  const backgroundImage =
+    style === 'lines'
+      ? `linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px)`
+      : `radial-gradient(circle, var(--grid-dot) 1px, transparent 1px)`
 
   return (
     <div
@@ -67,7 +73,7 @@ const CanvasGrid: React.FC<CanvasGridProps> = ({
         height: containerHeight,
         pointerEvents: 'none',
         zIndex: 0,
-        backgroundImage: `radial-gradient(circle, var(--grid-dot) 1px, transparent 1px)`,
+        backgroundImage,
         backgroundSize: `${step}px ${step}px`,
         backgroundPosition: `${initialOffset.x}px ${initialOffset.y}px`,
       }}

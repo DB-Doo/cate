@@ -7,7 +7,15 @@ import { useEffect, useRef } from 'react'
 import { useStatusStore } from '../stores/statusStore'
 import { useAppStore } from '../stores/appStore'
 import { sendOsNotification } from '../lib/osNotifications'
+import { decideNotification } from './notificationTransitions'
+import { createNotificationDebouncer } from './notificationDebouncer'
 import type { TerminalActivity, AgentState } from '../../shared/types'
+
+// Hold a pending waitingForInput notification for this long before firing.
+// Long enough to absorb mid-task streaming pauses (~1.2s buffer-stability
+// window in agentScreenDetector + slack); short enough that a genuinely parked
+// agent still nudges the user within a few seconds.
+const WAITING_FOR_INPUT_DEBOUNCE_MS = 3500
 
 // -----------------------------------------------------------------------------
 // Previous state tracking for transition detection
@@ -40,6 +48,14 @@ export function useProcessMonitor(workspaceId: string): void {
 
     // Debounce activity updates per terminal to avoid cascading re-renders
     const pendingUpdates = new Map<string, ReturnType<typeof setTimeout>>()
+
+    // Hold waitingForInput notifications so flickers (running → waitingForInput
+    // → running during streaming pauses) don't spam the user.
+    const waitingDebouncer = createNotificationDebouncer<{
+      title: string
+      body: string
+      action: { type: 'focusTerminal'; workspaceId: string; terminalId: string }
+    }>(WAITING_FOR_INPUT_DEBOUNCE_MS, (payload) => sendOsNotification(payload))
 
     const unsubscribe = api.onShellActivityUpdate(
       (
@@ -99,19 +115,30 @@ export function useProcessMonitor(workspaceId: string): void {
         const displayName = agentName ?? prev.agentName ?? 'Agent'
         const action = { type: 'focusTerminal' as const, workspaceId: actualWorkspaceId, terminalId }
 
-        if (agentState === 'waitingForInput' && prev.agentState !== 'waitingForInput') {
-          sendOsNotification({
+        const kind = decideNotification(prev.agentState, agentState)
+        if (kind === 'waitingForInput') {
+          // Debounced — only fire if the agent stays in waitingForInput long
+          // enough to be a real "parked, awaiting you" event, not a brief
+          // streaming pause.
+          waitingDebouncer.request(terminalId, {
             title: `${displayName} needs input`,
             body: `${displayName} is waiting for your response.`,
             action,
           })
-        } else if (agentState === 'finished' && prev.agentState !== 'finished') {
+        } else if (kind === 'finished') {
+          // The agent left waitingForInput before the debounce window
+          // elapsed — drop the pending notification.
+          waitingDebouncer.cancel(terminalId)
           const finishedName = prev.agentName ?? displayName
           sendOsNotification({
             title: 'Task complete',
             body: `${finishedName} has finished running.`,
             action,
           })
+        } else if (agentState !== 'waitingForInput' && prev.agentState === 'waitingForInput') {
+          // Left waitingForInput for some other state (e.g. running) before
+          // the debounce fired — cancel.
+          waitingDebouncer.cancel(terminalId)
         }
 
         prevMap.set(terminalId, { agentState, agentName })
@@ -123,6 +150,7 @@ export function useProcessMonitor(workspaceId: string): void {
       // Clear any pending debounced updates
       for (const timer of pendingUpdates.values()) clearTimeout(timer)
       pendingUpdates.clear()
+      waitingDebouncer.dispose()
     }
   }, [workspaceId])
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, Trash, Upload } from '@phosphor-icons/react'
 import { useSettingsStore } from '../stores/settingsStore'
-import { SettingRow, TextInput, NumberInput } from './SettingsComponents'
+import { SettingRow, TextInput, NumberInput, Toggle } from './SettingsComponents'
 import { TERMINAL_PRESETS } from '../lib/terminalRegistry'
 import type { TerminalThemeData } from '../../shared/types'
 
@@ -106,6 +106,15 @@ export function TerminalSettings() {
           min={0}
           max={32}
           step={1}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Auto-suspend idle background terminals"
+        description="Pause (SIGSTOP) terminals that have been offscreen and silent for 2 minutes so macOS can reclaim their memory. Resumes instantly on focus — no state loss. POSIX-only."
+      >
+        <Toggle
+          checked={store.autoSuspendIdleTerminals}
+          onChange={(v) => store.setSetting('autoSuspendIdleTerminals', v)}
         />
       </SettingRow>
 

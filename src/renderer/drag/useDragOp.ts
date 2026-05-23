@@ -7,7 +7,7 @@
 
 import React, { useCallback } from 'react'
 import type { Point, Size, PanelTransferSnapshot } from '../../shared/types'
-import { PANEL_DEFAULT_SIZES } from '../../shared/types'
+import { PANEL_DEFAULT_SIZES, PANEL_CANVAS_DROP_SIZES } from '../../shared/types'
 import { useDragStore } from './store'
 import type { DragSource, DragOpSourceSpec, RuntimeState } from './types'
 import { reduce, initial as runtimeInitial } from './runtime'
@@ -41,6 +41,10 @@ function attachListeners() {
   window.addEventListener('mouseup', onMouseUp, true)
   window.addEventListener('blur', onBlur, true)
   session.listenersAttached = true
+  // Body marker so resize-cursor / resize-start can guard against starting an
+  // edge-resize on top of an in-flight drag. Mirrors `canvas-interacting`
+  // which is set by the resize hook.
+  document.body.classList.add('canvas-dragging')
 }
 
 function detachListeners() {
@@ -50,6 +54,7 @@ function detachListeners() {
   window.removeEventListener('mouseup', onMouseUp, true)
   window.removeEventListener('blur', onBlur, true)
   session.listenersAttached = false
+  document.body.classList.remove('canvas-dragging')
 }
 
 // -----------------------------------------------------------------------------
@@ -219,7 +224,10 @@ function measureDragGeometry(
     return measureCanvasNodeGrab(canvasStoreApi, owningNodeId, cursorClient, spec.panelType)
   }
 
-  const ghostSize: Size = { ...PANEL_DEFAULT_SIZES[spec.panelType] }
+  // Non-canvas-node dock-tab source (e.g. a tab in a side/main dock zone). The
+  // ghost previews the eventual canvas-drop footprint, so use the compact
+  // canvas-drop default rather than the (larger) free-window default.
+  const ghostSize: Size = { ...PANEL_CANVAS_DROP_SIZES[spec.panelType] }
   if (sourceRect) {
     return {
       grab: dockTabGrabOffset({ cursorClient, sourceRect, ghostSize }),
@@ -444,6 +452,10 @@ export function useDragOp(): {
     const session = getDefaultSession()
     if (session.active) return
     if (e.button !== 0) return
+    // First-gesture-wins: an in-flight resize blocks new drags for the same
+    // pointer gesture. Resize sets `canvas-interacting` on body in
+    // useNodeResize.handleResizeStart.
+    if (document.body.classList.contains('canvas-interacting')) return
     session.wasDragged.current = false
 
     const cursorClient: Point = { x: e.clientX, y: e.clientY }

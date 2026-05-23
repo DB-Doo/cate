@@ -603,6 +603,8 @@ export interface LayoutSnapshot {
 
 export type TerminalUrlAutoOpenMode = 'off' | 'auto' | 'prompt'
 
+export type CanvasGridStyle = 'dots' | 'lines' | 'none'
+
 export type NotificationAction =
   | { type: 'focusTerminal'; workspaceId: string; terminalId: string }
 
@@ -668,12 +670,19 @@ export interface AppSettings {
   /** When enabled, the node that occupies the most visible canvas area is
    *  automatically focused as the user pans/zooms. */
   autoFocusLargestVisibleNode: boolean
+  /** Background pattern drawn on the canvas. */
+  canvasGridStyle: CanvasGridStyle
 
   // Terminal
   terminalFontFamily: string
   terminalFontSize: number
   /** xterm.js scrollback buffer size, in lines. Lower = less memory per terminal. */
   terminalScrollback: number
+  /** Auto-suspend (SIGSTOP) idle background terminals to reduce memory use.
+   *  A terminal is suspended after it has been offscreen AND produced no PTY
+   *  output for 2 minutes. SIGCONT is sent on focus/interaction. POSIX-only;
+   *  no effect on Windows. */
+  autoSuspendIdleTerminals: boolean
   /** User-imported terminal color palettes. Appended to the built-in presets
    *  in the terminal-tab Theme submenu. */
   terminalCustomThemes: TerminalThemeData[]
@@ -702,6 +711,9 @@ export interface AppSettings {
   // Privacy
   /** Send automatic error/crash reports to Sentry. Takes effect on next launch. */
   crashReportingEnabled: boolean
+  /** Send anonymous usage data (app starts, version upgrades, feedback) to the
+   *  cero-analytics endpoint. No personal data, no file paths, no project info. */
+  usageAnalyticsEnabled: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -723,11 +735,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultPanelHeight: 400,
   zoomSpeed: 1.0,
   autoFocusLargestVisibleNode: false,
+  canvasGridStyle: 'dots',
 
   // Terminal
   terminalFontFamily: '',
   terminalFontSize: 0,
   terminalScrollback: 2000,
+  autoSuspendIdleTerminals: true,
   terminalCustomThemes: [],
   // defaultTerminalTheme is optional — unset means "follow app theme"
 
@@ -746,6 +760,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   // Privacy
   crashReportingEnabled: true,
+  usageAnalyticsEnabled: true,
 }
 
 // -----------------------------------------------------------------------------
@@ -763,6 +778,20 @@ export const PANEL_DEFAULT_SIZES: Record<PanelType, Size> = Object.fromEntries(
 export const PANEL_MINIMUM_SIZES: Record<PanelType, Size> = Object.fromEntries(
   (Object.keys(PANEL_DEFINITIONS) as PanelType[]).map((t) => [t, PANEL_DEFINITIONS[t].minimumSize]),
 ) as Record<PanelType, Size>
+
+// Compact sizes used when a panel is dropped onto the canvas from a non-
+// canvas-node source (e.g. a tab dragged out of a side/main dock window).
+// PANEL_DEFAULT_SIZES sizes fresh windows in their own shells and is too
+// large for an in-canvas drop.
+export const PANEL_CANVAS_DROP_SIZES: Record<PanelType, Size> = {
+  terminal: { width: 520, height: 340 },
+  browser: { width: 640, height: 440 },
+  editor: { width: 540, height: 420 },
+  git: { width: 440, height: 500 },
+  fileExplorer: { width: 280, height: 440 },
+  projectList: { width: 280, height: 360 },
+  canvas: { width: 640, height: 480 },
+}
 
 // -----------------------------------------------------------------------------
 // Zoom constants — from CanvasState.swift

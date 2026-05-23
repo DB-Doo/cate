@@ -43,9 +43,11 @@ const SETTINGS_SCHEMA: Record<keyof AppSettings, string> = {
   defaultPanelHeight: 'number',
   zoomSpeed: 'number',
   autoFocusLargestVisibleNode: 'boolean',
+  canvasGridStyle: 'string',
   terminalFontFamily: 'string',
   terminalFontSize: 'number',
   terminalScrollback: 'number',
+  autoSuspendIdleTerminals: 'boolean',
   terminalCustomThemes: 'array',
   defaultTerminalTheme: 'string',
   browserHomepage: 'string',
@@ -56,6 +58,7 @@ const SETTINGS_SCHEMA: Record<keyof AppSettings, string> = {
   notificationsEnabled: 'boolean',
   notifyOnlyWhenUnfocused: 'boolean',
   crashReportingEnabled: 'boolean',
+  usageAnalyticsEnabled: 'boolean',
 }
 
 /** Safely merge only known, type-correct keys from a parsed object into the settings cache. */
@@ -306,6 +309,16 @@ export function registerHandlers(): void {
       const store = await getStore()
       store.set(key, value as never)
       ;(settingsCache as Record<string, unknown>)[key as string] = value
+      // Live-toggle Sentry when the user flips the crash-reporting setting,
+      // so they don't need to relaunch for the change to take effect.
+      if (key === 'crashReportingEnabled') {
+        try {
+          const { setCrashReportingEnabled } = await import('./sentry')
+          setCrashReportingEnabled(value !== false)
+        } catch (err) {
+          log.warn('Sentry live-toggle failed: %O', err)
+        }
+      }
     },
   )
 

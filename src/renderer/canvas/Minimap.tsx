@@ -5,9 +5,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useCanvasStoreContext, useCanvasStoreApi, shallow } from '../stores/CanvasStoreContext'
 import { useWorkspacePanels } from '../stores/appStore'
-import { panelColor as brandPanelColor } from '../panels/types'
-import { PANEL_REGISTRY } from '../panels/registry'
-import type { PanelType } from '../../shared/types'
 
 const MINIMAP_DEFAULT_WIDTH = 200
 const MINIMAP_DEFAULT_HEIGHT = 150
@@ -36,9 +33,21 @@ const loadSize = (): { w: number; h: number } => {
   return { w: MINIMAP_DEFAULT_WIDTH, h: MINIMAP_DEFAULT_HEIGHT }
 }
 
-function mutedPanelColor(panelType: string): string {
-  const def = PANEL_REGISTRY[panelType as PanelType]
-  return def?.mutedColor ?? '#888'
+// Map a panel type to a themed CSS variable so the minimap follows the active
+// theme. Falls back to a generic surface accent for unknown types.
+function themedPanelColor(panelType: string): string {
+  switch (panelType) {
+    case 'terminal':
+    case 'browser':
+    case 'editor':
+    case 'git':
+    case 'fileExplorer':
+    case 'projectList':
+    case 'canvas':
+      return `var(--panel-${panelType})`
+    default:
+      return 'var(--text-muted)'
+  }
 }
 
 interface MinimapProps {
@@ -338,7 +347,7 @@ const Minimap: React.FC<MinimapProps> = ({ mode = 'floating' }) => {
               top: toMiniY(node.origin.y),
               width: Math.max(node.size.width * scale, 2),
               height: Math.max(node.size.height * scale, 2),
-              backgroundColor: isPopover ? brandPanelColor(type as any) : mutedPanelColor(type),
+              backgroundColor: themedPanelColor(type),
               borderRadius: 1,
               opacity: 1,
             }}

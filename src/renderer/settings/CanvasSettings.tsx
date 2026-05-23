@@ -1,5 +1,6 @@
 import { useSettingsStore } from '../stores/settingsStore'
-import { SettingRow, Toggle, NumberInput, Slider } from './SettingsComponents'
+import { SettingRow, Toggle, NumberInput, Slider, Select } from './SettingsComponents'
+import type { CanvasGridStyle } from '../../shared/types'
 
 export function CanvasSettings() {
   const store = useSettingsStore()
@@ -18,7 +19,21 @@ export function CanvasSettings() {
           onChange={(v) => store.setSetting('autoFocusLargestVisibleNode', v)}
         />
       </SettingRow>
-      <SettingRow label="Show minimap">
+      <SettingRow label="Canvas background">
+        <Select
+          value={store.canvasGridStyle}
+          onChange={(v) => store.setSetting('canvasGridStyle', v as CanvasGridStyle)}
+          options={[
+            { value: 'dots', label: 'Dots' },
+            { value: 'lines', label: 'Grid lines' },
+            { value: 'none', label: 'None' },
+          ]}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Show minimap"
+        description="Show the minimap button in the bottom-right corner of the canvas."
+      >
         <Toggle checked={store.showMinimap} onChange={(v) => store.setSetting('showMinimap', v)} />
       </SettingRow>
       <SettingRow label="Default panel width">

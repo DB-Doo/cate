@@ -11,14 +11,17 @@ import { findTabStack, findStackContainingPanel } from '../stores/dockTreeUtils'
 import { ALL_ZONES } from '../../shared/types'
 import type { NotificationAction, PanelLocation } from '../../shared/types'
 
+export { shouldSendNotification } from './notificationGating'
+import { shouldSendNotification } from './notificationGating'
+
 export function sendOsNotification(payload: {
   title: string
   body: string
   action?: NotificationAction
 }): void {
   const settings = useSettingsStore.getState()
-  if (!settings.notificationsEnabled) return
-  if (settings.notifyOnlyWhenUnfocused && typeof document !== 'undefined' && document.hasFocus()) return
+  const focused = typeof document !== 'undefined' && document.hasFocus()
+  if (!shouldSendNotification(settings, focused)) return
   window.electronAPI?.notifyOS(payload)
 }
 

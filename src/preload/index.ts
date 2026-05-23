@@ -13,6 +13,7 @@ import {
   TERMINAL_GET_CWD,
   TERMINAL_LOG_READ,
   TERMINAL_SCROLLBACK_SAVE,
+  TERMINAL_SET_VISIBILITY,
   FS_READ_FILE,
   FS_WRITE_FILE,
   FS_READ_DIR,
@@ -110,6 +111,9 @@ import {
   UPDATE_INSTALL,
   UPDATE_DOWNLOAD,
   UPDATE_OPEN_RELEASE,
+  ANALYTICS_FEEDBACK_PROMPT,
+  ANALYTICS_FEEDBACK_SUBMIT,
+  ANALYTICS_FEEDBACK_DISMISS,
 } from '../shared/ipc-channels'
 
 // Cache native-fullscreen state so renderer drag handlers can synchronously
@@ -182,6 +186,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   terminalScrollbackSave(ptyId: string, content: string): Promise<void> {
     return ipcRenderer.invoke(TERMINAL_SCROLLBACK_SAVE, ptyId, content)
+  },
+
+  terminalSetVisibility(terminalId: string, visible: boolean): Promise<void> {
+    return ipcRenderer.invoke(TERMINAL_SET_VISIBILITY, terminalId, visible)
   },
 
   onTerminalExit(callback: (terminalId: string, exitCode: number) => void): () => void {
@@ -801,4 +809,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateDownload(): void { ipcRenderer.send(UPDATE_DOWNLOAD) },
   updateInstall(): void { ipcRenderer.send(UPDATE_INSTALL) },
   updateOpenRelease(url?: string): void { ipcRenderer.send(UPDATE_OPEN_RELEASE, url) },
+
+  // ---------------------------------------------------------------------------
+  // Analytics — post-update feedback prompt
+  // ---------------------------------------------------------------------------
+
+  onFeedbackPrompt(callback: (payload: { fromVersion: string; toVersion: string }) => void): () => void {
+    const listener = (_e: Electron.IpcRendererEvent, payload: { fromVersion: string; toVersion: string }): void => callback(payload)
+    ipcRenderer.on(ANALYTICS_FEEDBACK_PROMPT, listener)
+    return () => { ipcRenderer.removeListener(ANALYTICS_FEEDBACK_PROMPT, listener) }
+  },
+
+  submitFeedback(payload: { rating: number; comment?: string }): Promise<{ ok: boolean; buffered?: boolean }> {
+    return ipcRenderer.invoke(ANALYTICS_FEEDBACK_SUBMIT, payload)
+  },
+
+  dismissFeedback(): void {
+    ipcRenderer.send(ANALYTICS_FEEDBACK_DISMISS)
+  },
 })

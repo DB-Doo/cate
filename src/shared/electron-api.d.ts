@@ -54,6 +54,10 @@ export interface ElectronAPI {
   /** Save terminal scrollback content (plain text) for session restore. */
   terminalScrollbackSave(ptyId: string, content: string): Promise<void>
 
+  /** Notify main of a terminal panel's on-screen visibility. Used by the
+   *  idle-suspend logic to SIGSTOP terminals that are offscreen and silent. */
+  terminalSetVisibility(terminalId: string, visible: boolean): Promise<void>
+
   // ---------------------------------------------------------------------------
   // Filesystem
   // ---------------------------------------------------------------------------
@@ -481,6 +485,22 @@ export interface ElectronAPI {
   updateInstall(): void
   /** Open the GitHub release page when auto-install is unavailable. */
   updateOpenRelease(url?: string): void
+
+  // -------------------------------------------------------------------------
+  // Analytics — post-update feedback prompt
+  // -------------------------------------------------------------------------
+
+  /** Subscribe to the main-process request to show the feedback modal. */
+  onFeedbackPrompt(
+    callback: (payload: { fromVersion: string; toVersion: string }) => void,
+  ): () => void
+  /** Send a feedback submission (1-5 rating + optional comment). Resolves
+   *  with `{ ok: true }` on a successful send, `{ ok: true, buffered: true }`
+   *  if the request failed but was queued for retry, or `{ ok: false }` on
+   *  fatal validation errors. The dialog uses this to show success/retry UX. */
+  submitFeedback(payload: { rating: number; comment?: string }): Promise<{ ok: boolean; buffered?: boolean }>
+  /** Mark the feedback prompt as dismissed without submitting. */
+  dismissFeedback(): void
 }
 
 declare global {

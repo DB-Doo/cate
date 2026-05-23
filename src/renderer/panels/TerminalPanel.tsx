@@ -13,7 +13,6 @@
 // =============================================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import '@xterm/xterm/css/xterm.css'
 
 import type { TerminalPanelProps } from './types'
 import { terminalRegistry } from '../lib/terminalRegistry'
@@ -290,7 +289,9 @@ export default function TerminalPanel({
         if (cancelled) return
         attachAndObserve(entry)
 
-        // IntersectionObserver: detach WebGL/ResizeObserver when hidden, re-attach when visible
+        // IntersectionObserver: detach WebGL/ResizeObserver when hidden, re-attach when visible.
+        // Also notify main so it can SIGSTOP the PTY after it has been hidden + silent
+        // for IDLE_SUSPEND_MS (see src/main/ipc/terminal.ts).
         const intersectionObserver = new IntersectionObserver(
           (entries) => {
             if (cancelled) return
@@ -301,6 +302,9 @@ export default function TerminalPanel({
               }
             } else {
               detachAndDisconnect()
+            }
+            if (entry.ptyId) {
+              window.electronAPI.terminalSetVisibility(entry.ptyId, isVisible).catch(() => { /* noop */ })
             }
           },
           { threshold: 0 },

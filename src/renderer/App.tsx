@@ -30,6 +30,7 @@ import { CommandPalette } from './ui/CommandPalette'
 import { GlobalSearch } from './ui/GlobalSearch'
 import { SettingsWindow } from './settings/SettingsWindow'
 import { SavedLayoutsDialog } from './dialogs/SavedLayoutsDialog'
+import { PostUpdateFeedbackDialog } from './dialogs/PostUpdateFeedbackDialog'
 import { loadSession, restoreSession, restoreMultiWorkspaceSession, restoreDetachedWindows, setupAutoSave, saveSession } from './lib/session'
 import type { MultiWorkspaceSession } from '../shared/types'
 import { useDockStore } from './stores/dockStore'
@@ -478,6 +479,7 @@ function MainApp() {
         <SettingsWindow isOpen={showSettings} onClose={closeSettings} initialTab={settingsInitialTab ?? undefined} />
       )}
       <SavedLayoutsDialog />
+      <PostUpdateFeedbackDialog />
 
       {initializing && (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-surface-4 select-none pointer-events-none">
