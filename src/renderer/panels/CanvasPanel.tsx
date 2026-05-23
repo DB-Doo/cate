@@ -312,19 +312,21 @@ export default function CanvasPanel({ panelId, workspaceId, nodeId, renderPanelC
           ))}
         </Canvas>
 
-        <CanvasToolbar
-          zoom={zoomLevel}
-          onNewTerminal={onNewTerminal}
-          onNewBrowser={onNewBrowser}
-          onNewEditor={onNewEditor}
-          onNewAgent={onNewAgent}
-          onNewCanvas={onNewCanvas}
-          onNewRegion={onNewRegion}
-          onAutoLayout={onAutoLayout}
-          onZoomToFit={onZoomToFit}
-          onZoomIn={onZoomIn}
-          onZoomOut={onZoomOut}
-        />
+        {(nodeIds.length > 0 || workspaceRootPath) && (
+          <CanvasToolbar
+            zoom={zoomLevel}
+            onNewTerminal={onNewTerminal}
+            onNewBrowser={onNewBrowser}
+            onNewEditor={onNewEditor}
+            onNewAgent={onNewAgent}
+            onNewCanvas={onNewCanvas}
+            onNewRegion={onNewRegion}
+            onAutoLayout={onAutoLayout}
+            onZoomToFit={onZoomToFit}
+            onZoomIn={onZoomIn}
+            onZoomOut={onZoomOut}
+          />
+        )}
 
         <ShortcutHintOverlay />
       </div>

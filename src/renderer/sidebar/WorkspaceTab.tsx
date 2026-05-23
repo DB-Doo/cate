@@ -183,15 +183,19 @@ const COLOR_NAMES: Record<string, string> = {
 interface WorkspaceTabProps {
   workspace: WorkspaceState
   isSelected: boolean
-  onClick: () => void
+  isMultiSelected?: boolean
+  onClick: (e?: React.MouseEvent) => void
   onClose: () => void
+  onBulkContextMenu?: (e: React.MouseEvent) => Promise<boolean>
 }
 
 export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   workspace,
   isSelected,
+  isMultiSelected = false,
   onClick,
   onClose,
+  onBulkContextMenu,
 }) => {
   // Single store read for all workspace status data
   const wsStatus = useStatusStore(useShallow((s) => {
@@ -275,6 +279,10 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null)
 
   const handleContextMenu = useCallback(async (e: React.MouseEvent) => {
+    if (onBulkContextMenu) {
+      const handled = await onBulkContextMenu(e)
+      if (handled) return
+    }
     e.preventDefault()
     e.stopPropagation()
     if (!window.electronAPI) return
@@ -339,7 +347,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       case 'close-panels': app.closeAllPanels(workspace.id); break
       case 'remove': app.removeWorkspace(workspace.id); break
     }
-  }, [workspace.id, workspace.name, workspace.rootPath, workspace.color, workspace.panels, isSelected])
+  }, [workspace.id, workspace.name, workspace.rootPath, workspace.color, workspace.panels, isSelected, onBulkContextMenu])
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -504,14 +512,16 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
         className={`group flex items-center gap-1 h-8 px-1.5 rounded-md cursor-pointer transition-colors outline-none ${
           isContextActive ? 'ring-1 ring-strong' : ''
         } ${
-          isSelected
+          isMultiSelected
+            ? 'bg-surface-3 text-primary ring-1 ring-strong'
+            : isSelected
             ? 'bg-surface-3 text-primary'
             : 'text-secondary hover:text-primary hover:bg-hover'
         }`}
         style={hasColor ? {
           backgroundColor: isSelected ? `${accent}26` : `${accent}14`,
         } : undefined}
-        onClick={onClick}
+        onClick={(e) => onClick(e)}
       >
         {/* Chevron / expand toggle */}
         <button

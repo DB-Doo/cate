@@ -30,12 +30,6 @@ export function CanvasSettings() {
           ]}
         />
       </SettingRow>
-      <SettingRow
-        label="Show minimap"
-        description="Show the minimap button in the bottom-right corner of the canvas."
-      >
-        <Toggle checked={store.showMinimap} onChange={(v) => store.setSetting('showMinimap', v)} />
-      </SettingRow>
       <SettingRow label="Default panel width">
         <NumberInput value={store.defaultPanelWidth} onChange={(v) => store.setSetting('defaultPanelWidth', v)} min={300} max={1200} step={50} />
       </SettingRow>

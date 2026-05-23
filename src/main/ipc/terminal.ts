@@ -290,7 +290,11 @@ function createTerminal(
         if (dataBuffer) {
           const windowId = terminalOwners.get(id)
           if (windowId != null) {
-            sendToWindow(windowId, TERMINAL_DATA, id, dataBuffer)
+            try {
+              sendToWindow(windowId, TERMINAL_DATA, id, dataBuffer)
+            } catch {
+              // Window destroyed between buffer and flush
+            }
           }
         }
         dataBuffer = ''
@@ -318,7 +322,11 @@ function writeTerminal(id: string, data: string): void {
     // shell wouldn't run until the next SIGCONT.
     const state = idleState.get(id)
     if (state?.suspended) resumeTerminal(id)
-    pty.write(data)
+    try {
+      pty.write(data)
+    } catch {
+      // PTY fd already closed (race between shell exit and incoming write)
+    }
   }
 }
 

@@ -95,6 +95,10 @@ export default function BrowserPanel({
   const rawInitialUrl = url || browserHomepage || 'https://www.google.com'
   const initialUrl = rawInitialUrl.startsWith('about:') ? rawInitialUrl : normalizeUrl(rawInitialUrl)
 
+  // Stable src for the <webview> element — computed once at mount so React
+  // never updates the attribute on re-render (which would re-navigate).
+  const [webviewSrc] = useState(() => initialUrl)
+
   const webviewRef = useRef<WebviewElement | null>(null)
   const [currentUrl, setCurrentUrl] = useState(initialUrl)
   const [inputUrl, setInputUrl] = useState(initialUrl)
@@ -222,6 +226,10 @@ export default function BrowserPanel({
 
     const onDidNavigate = (event: any) => {
       const url = event.url ?? webview.getURL()
+      // Skip about:blank — it fires transiently when the webview guest
+      // process spins up or during teardown. Persisting it would clobber
+      // the real URL and break session restore / visibility-cull remount.
+      if (url === 'about:blank') return
       setCurrentUrl(url)
       setInputUrl(url)
       setCanGoBack(webview.canGoBack())
@@ -233,6 +241,7 @@ export default function BrowserPanel({
 
     const onDidNavigateInPage = (event: any) => {
       const url = event.url ?? webview.getURL()
+      if (url === 'about:blank') return
       setCurrentUrl(url)
       setInputUrl(url)
       setCanGoBack(webview.canGoBack())
@@ -303,10 +312,6 @@ export default function BrowserPanel({
     webview.addEventListener('new-window', onNewWindow)
 
     return () => {
-      // IMPORTANT: remove navigation listeners BEFORE kicking off any
-      // teardown navigation. Otherwise the late-firing did-navigate from
-      // loadURL('about:blank') below would overwrite panel.url with
-      // 'about:blank' in the store, and the URL would be lost on restart.
       try { portalRegistry.unregister(panelId) } catch { /* ignore */ }
       webview.removeEventListener('dom-ready', onDomReady)
       webview.removeEventListener('did-navigate', onDidNavigate)
@@ -317,12 +322,6 @@ export default function BrowserPanel({
       webview.removeEventListener('did-stop-loading', onDidStopLoading)
       webview.removeEventListener('will-navigate', onWillNavigate)
       webview.removeEventListener('new-window', onNewWindow)
-      try {
-        // May throw if webview was never attached / dom-ready before unmount
-        webview.loadURL('about:blank')
-      } catch {
-        // ignore — webview is being torn down anyway
-      }
     }
   }, [panelId, workspaceId, updatePanelTitle, updatePanelUrl])
 
@@ -406,7 +405,7 @@ export default function BrowserPanel({
         {/* Webview */}
         <webview
           ref={webviewRef as any}
-          src={initialUrl}
+          src={webviewSrc}
           className={`w-full h-full ${loadError ? 'hidden' : ''}`}
           partition={`persist:browser-${panelId}`}
         />

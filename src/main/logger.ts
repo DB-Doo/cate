@@ -18,6 +18,10 @@ log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
 // launched from Finder have no attached stdout/stderr, so writes throw EIO.
 log.transports.console.level = process.env.NODE_ENV === 'development' ? 'debug' : false
 
+// Guard against EIO on broken stderr even in dev (parent terminal closed).
+process.stderr?.on?.('error', () => {})
+process.stdout?.on?.('error', () => {})
+
 // Catch uncaughtException + unhandledRejection globally
 log.errorHandler.startCatching()
 

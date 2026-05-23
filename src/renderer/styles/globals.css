@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+*:focus {
+  outline: none;
+}
+
 /* =============================================================================
    Theme tokens — defined per [data-theme] attribute on <html>.
    :root provides a safe fallback (dark-warm values) for any un-themed render.

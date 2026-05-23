@@ -3,10 +3,8 @@
 //
 // These are source-level assertions rather than full React renders — the
 // toolbar pulls in heavy renderer modules (xterm, electron-log, the canvas
-// store context tree) that aren't worth wiring up just to verify two
-// structural invariants. Both bugs being pinned here were silent regressions
-// in the source, so reading the source is the cheapest way to catch them
-// coming back.
+// store context tree) that aren't worth wiring up just to verify structural
+// invariants.
 // =============================================================================
 
 import { readFileSync } from 'node:fs'
@@ -19,49 +17,22 @@ const SOURCE = readFileSync(
 )
 
 describe('CanvasToolbar — minimap section', () => {
-  it('does not force a hard-coded theme on the minimap popover (must inherit the active app theme)', () => {
-    // Bug: the popover wrapper used to set data-theme="dark-warm", which
-    // pinned the surface tokens to the warm palette regardless of the user's
-    // selected theme (cool dark, light, etc).
+  it('does not force a hard-coded theme on the minimap container (must inherit the active app theme)', () => {
     const minimapStart = SOURCE.indexOf('<Minimap mode="popover"')
     expect(minimapStart).toBeGreaterThan(-1)
 
-    // Look at the ~600 chars preceding the Minimap usage — that's its wrapping
-    // chain inside the toolbar. None of them should pin the theme.
     const wrapperBlock = SOURCE.slice(Math.max(0, minimapStart - 600), minimapStart)
     expect(wrapperBlock).not.toMatch(/data-theme=/)
   })
 
-  it('renders both the minimap button and popover only when the showMinimap setting is true', () => {
-    // The button used to render unconditionally; toggling the setting only
-    // hid the popover, leaving an orphaned button behind. The entire minimap
-    // sub-tree must now be gated on `showMinimap`.
-    const minimapStart = SOURCE.indexOf('<Minimap mode="popover"')
-    const buttonStart = SOURCE.indexOf('<MapTrifold')
-    expect(minimapStart).toBeGreaterThan(-1)
-    expect(buttonStart).toBeGreaterThan(-1)
-
-    // Find the nearest enclosing `{showMinimap && (` opener before each.
-    const gateRegex = /\{showMinimap && \(/g
-    const gates: number[] = []
-    let m: RegExpExecArray | null
-    while ((m = gateRegex.exec(SOURCE)) !== null) gates.push(m.index)
-    expect(gates.length).toBeGreaterThan(0)
-
-    const nearestGateBefore = (idx: number) =>
-      gates.filter((g) => g < idx).pop() ?? -1
-
-    expect(nearestGateBefore(buttonStart)).toBeGreaterThan(-1)
-    expect(nearestGateBefore(minimapStart)).toBeGreaterThan(-1)
-  })
-
-  it('drives the popover open/close from the transient uiStore, not from the persisted setting', () => {
-    // The click handler used to flip the `showMinimap` setting itself, which
-    // conflated "feature available" with "popover open" — toggling the
-    // setting then made the button vanish too. The button must instead drive
-    // a transient uiStore flag.
+  it('drives the popover open/close from the transient uiStore, not from a persisted setting', () => {
     expect(SOURCE).toMatch(/toggleMinimapOpen/)
     expect(SOURCE).not.toMatch(/saveSetting\(['"]showMinimap['"]/)
     expect(SOURCE).not.toMatch(/setSetting\(['"]showMinimap['"]/)
+  })
+
+  it('always renders the minimap button (not gated by a setting)', () => {
+    expect(SOURCE).toContain('<MapTrifold')
+    expect(SOURCE).not.toMatch(/\{showMinimap && \(/)
   })
 })

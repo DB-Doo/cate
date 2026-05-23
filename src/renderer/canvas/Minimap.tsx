@@ -78,8 +78,8 @@ const Minimap: React.FC<MinimapProps> = ({ mode = 'floating' }) => {
   })
   const [corner, setCorner] = useState<Corner>(loadCorner)
   const [size, setSize] = useState<{ w: number; h: number }>(loadSize)
-  const MINIMAP_WIDTH = mode === 'popover' ? 220 : size.w
-  const MINIMAP_HEIGHT = mode === 'popover' ? 160 : size.h
+  const MINIMAP_WIDTH = mode === 'popover' ? 218 : size.w
+  const MINIMAP_HEIGHT = mode === 'popover' ? 158 : size.h
 
   const sizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cornerDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -257,19 +257,19 @@ const Minimap: React.FC<MinimapProps> = ({ mode = 'floating' }) => {
       ref={minimapRef}
       style={{
         ...(isPopover
-          ? { position: 'relative' as const }
+          ? { position: 'relative' as const, width: '100%', height: '100%' }
           : {
               position: 'absolute' as const,
               ...(corner.startsWith('bottom') ? { bottom: MINIMAP_GAP } : { top: MINIMAP_GAP }),
               ...(corner.endsWith('right') ? { right: MINIMAP_GAP } : { left: MINIMAP_GAP }),
               opacity: 0.7,
               zIndex: 20,
+              width: MINIMAP_WIDTH,
+              height: MINIMAP_HEIGHT,
             }),
-        width: MINIMAP_WIDTH,
-        height: MINIMAP_HEIGHT,
-        backgroundColor: 'var(--surface-2)',
-        borderRadius: 8,
-        border: `1px solid var(--border-subtle)`,
+        backgroundColor: isPopover ? 'transparent' : 'var(--surface-2)',
+        borderRadius: isPopover ? 6 : 8,
+        border: isPopover ? 'none' : `1px solid var(--border-subtle)`,
         overflow: 'hidden',
         cursor: 'crosshair',
       }}

@@ -16,10 +16,10 @@ import {
   DotsThree,
   SquaresFour,
   MapTrifold,
+  X,
 } from '@phosphor-icons/react'
 import Minimap from './Minimap'
 import { useCanvasStoreApi } from '../stores/CanvasStoreContext'
-import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import { UpdateButton } from './UpdateButton'
 
@@ -89,7 +89,6 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   onZoomOut,
 }) => {
   const canvasApi = useCanvasStoreApi()
-  const showMinimap = useSettingsStore((s) => s.showMinimap)
   const minimapOpen = useUIStore((s) => s.minimapOpen)
   const toggleMinimapOpen = useUIStore((s) => s.toggleMinimapOpen)
   const zoomText = `${Math.round(zoom * 100)}%`
@@ -207,80 +206,44 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
 
     </div>
 
-    {/* Minimap — standalone pill button anchored to the bottom-right corner.
-        The right offset includes the right sidebar width so the button stays
-        visible when the overlay sidebar is expanded. The entire minimap UI
-        (button + popover) is gated by the `showMinimap` setting. */}
+    {/* Minimap — pill button anchored to bottom-right that grows upward-left
+        to reveal the map. The button stays at the bottom-right corner so open
+        and close feel like the same gesture. */}
     <div
-      className="absolute bottom-4 z-50 flex items-center gap-2"
+      className="absolute bottom-4 z-50 flex items-end gap-2"
       style={{ right: 'calc(1rem + var(--cate-right-sidebar-width, 0px))' }}
     >
       <UpdateButton />
-      {showMinimap && (
-        <div className="relative" data-testid="minimap-toggle">
-          <div className="rounded-full border border-strong bg-surface-6 shadow-[0_8px_24px_-6px_var(--shadow-node)]">
-            <div className="flex items-center p-1.5">
-              <ToolbarButton
-                onClick={toggleMinimapOpen}
-                title={minimapOpen ? 'Hide minimap' : 'Show minimap'}
-                size="panel"
-                active={minimapOpen}
-              >
-                <MapTrifold size={14} />
-              </ToolbarButton>
-            </div>
+      <div
+        data-testid="minimap-toggle"
+        className="relative overflow-hidden border border-strong shadow-[0_8px_24px_-6px_var(--shadow-node)]"
+        style={{
+          borderRadius: 20,
+          transition: 'width 300ms cubic-bezier(0.16,1,0.3,1), height 300ms cubic-bezier(0.16,1,0.3,1), background 200ms ease, backdrop-filter 200ms ease',
+          width: minimapOpen ? 220 : 36,
+          height: minimapOpen ? 160 : 36,
+          background: minimapOpen
+            ? 'color-mix(in srgb, var(--surface-2) 45%, transparent)'
+            : 'var(--surface-6)',
+          backdropFilter: minimapOpen ? 'blur(24px) saturate(1.5)' : 'none',
+          WebkitBackdropFilter: minimapOpen ? 'blur(24px) saturate(1.5)' : 'none',
+        }}
+      >
+        {minimapOpen && (
+          <div className="absolute inset-0">
+            <Minimap mode="popover" />
           </div>
-          {minimapOpen && (
-            <div
-              className="absolute right-0 bottom-full mb-2 rounded-lg overflow-hidden shadow-[0_18px_40px_-12px_var(--shadow-node)]"
-            >
-              <Minimap mode="popover" />
-            </div>
-          )}
-          {minimapOpen && (
-            <>
-              {/* Border triangle (slightly larger, underneath) */}
-              <div
-                aria-hidden
-                className="absolute left-1/2 -translate-x-1/2 bottom-full"
-                style={{
-                  marginBottom: 1,
-                  width: 0,
-                  height: 0,
-                  borderLeft: '7px solid transparent',
-                  borderRight: '7px solid transparent',
-                  borderTop: '7px solid var(--border-subtle)',
-                }}
-              />
-              {/* Fill triangle (on top, 1px inset) */}
-              <div
-                aria-hidden
-                className="absolute left-1/2 -translate-x-1/2 bottom-full"
-                style={{
-                  marginBottom: 2,
-                  width: 0,
-                  height: 0,
-                  borderLeft: '6px solid transparent',
-                  borderRight: '6px solid transparent',
-                  borderTop: '6px solid var(--surface-2)',
-                }}
-              />
-              {/* Notch — covers the 1px popover border across the tail's width so
-                  the tail visually connects to the popover without a seam line. */}
-              <div
-                aria-hidden
-                className="absolute left-1/2 -translate-x-1/2 bottom-full"
-                style={{
-                  marginBottom: 8,
-                  width: 12,
-                  height: 1,
-                  background: 'var(--surface-2)',
-                }}
-              />
-            </>
-          )}
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={toggleMinimapOpen}
+          title={minimapOpen ? 'Hide minimap' : 'Show minimap'}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+          className="absolute -bottom-[1px] -right-[1px] w-[36px] h-[36px] flex items-center justify-center text-primary hover:text-primary/80 active:scale-[0.92] focus:outline-none focus-visible:outline-none transition-all duration-100 z-10"
+        >
+          {minimapOpen ? <X size={12} weight="bold" /> : <MapTrifold size={14} />}
+        </button>
+      </div>
     </div>
     </>
   )

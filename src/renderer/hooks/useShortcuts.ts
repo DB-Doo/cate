@@ -7,7 +7,6 @@ import { useEffect } from 'react'
 import { useShortcutStore } from '../stores/shortcutStore'
 import { useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import { useAppStore } from '../stores/appStore'
-import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import type { MenuActionId, ShortcutAction } from '../../shared/types'
 import { confirmDeleteRegion } from '../lib/confirmDeleteRegion'
@@ -100,12 +99,7 @@ export function useShortcuts(): void {
           break
         }
         case 'toggleMinimap':
-          // Only toggles the popover when the minimap feature is enabled in
-          // settings; if disabled, the shortcut is a no-op (matches the
-          // hidden-button state).
-          if (useSettingsStore.getState().showMinimap) {
-            useUIStore.getState().toggleMinimapOpen()
-          }
+          useUIStore.getState().toggleMinimapOpen()
           break
         case 'nodeSwitcher':
           useUIStore.getState().setShowNodeSwitcher(true)

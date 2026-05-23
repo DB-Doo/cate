@@ -53,9 +53,7 @@ interface UIStoreState {
   showPanelSwitcher: boolean
   showGlobalSearch: boolean
   showLayoutsDialog: boolean
-  /** Whether the minimap popover is currently open. Distinct from the
-   *  `showMinimap` setting which controls whether the minimap feature
-   *  (button + popover) is available at all. */
+  /** Whether the minimap is currently expanded. */
   minimapOpen: boolean
   showSettings: boolean
   /** Optional initial settings tab to open when showSettings flips to true. */
