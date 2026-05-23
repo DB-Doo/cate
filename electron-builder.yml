@@ -3,9 +3,7 @@ productName: Cate
 directories:
   output: release
 asarUnpack:
-  - "node_modules/@earendil-works/**"
-  - "node_modules/.bin/pi"
-  - "node_modules/.bin/pi.cmd"
+  - "node_modules/**"
 extraResources:
   # Ship bundled pi extensions (e.g. cate-plan-mode) into the packaged app so
   # installPlanModeExtension can copy them into ~/.pi/agent/extensions/ on
