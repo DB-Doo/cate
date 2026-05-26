@@ -225,7 +225,7 @@ function MessageRow({
   if (msg.type === 'user') {
     return (
       <div className="flex flex-col items-end gap-1">
-        <div className="max-w-[85%] px-3.5 py-2 rounded-2xl rounded-br-md bg-agent/85 text-white/80 text-[13px] whitespace-pre-wrap break-words shadow-sm">
+        <div className="max-w-[85%] px-3.5 py-2 rounded-2xl rounded-br-md bg-agent/50 text-white text-[13px] whitespace-pre-wrap break-words shadow-sm">
           {msg.text}
         </div>
         <div className="flex items-center gap-0.5 text-muted">
