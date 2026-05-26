@@ -56,7 +56,6 @@ import {
 
   QueueBadges,
   readFileAsImage,
-  RetryBanner,
   ThinkingLevelPicker,
 } from './AgentPanelChrome'
 import type {
@@ -73,20 +72,20 @@ import { loadDefaultModel, loadLastModel, saveLastModel } from './agentModelPref
 
 
 function useNodePortalTarget(ref: React.RefObject<Element | null>) {
-  const [target, setTarget] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    const el = ref.current?.closest('[data-node-id]') as HTMLElement | null
-    setTarget(el)
-  }, [ref])
+  const getTarget = useCallback(
+    () => ref.current?.closest('[data-node-id]') as HTMLElement | null,
+    [ref],
+  )
   const toLocal = useCallback(
     (viewport: { top: number; left: number }) => {
+      const target = getTarget()
       if (!target) return viewport
       const tr = target.getBoundingClientRect()
       return { top: viewport.top - tr.top, left: viewport.left - tr.left }
     },
-    [target],
+    [getTarget],
   )
-  return { target, toLocal }
+  return { getTarget, toLocal }
 }
 
 // -----------------------------------------------------------------------------
@@ -929,7 +928,7 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
               </div>
             )}
 
-            <RetryBanner state={retry} onAbort={handleAbortRetry} />
+            {/* Retry status is now shown inline in the chat thread */}
             <ExtensionWidget widgets={extensionWidgets} placement="aboveEditor" />
             <QueueBadges steering={steeringQueue} followUp={followUpQueue} />
 
@@ -991,6 +990,8 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
                   onImplementPlan={handleImplementPlan}
                   onRefinePlan={handleRefinePlan}
                   onClearAndImplement={handleClearAndImplement}
+                  retry={retry}
+                  onAbortRetry={handleAbortRetry}
                 />
                 <ExtensionWidget widgets={extensionWidgets} placement="belowEditor" />
                 {currentUiRequest && (
@@ -1114,10 +1115,8 @@ function AgentSidebar({
                   key={c.path}
                   chat={c}
                   active={c.path === currentSessionFile}
-                  open={openSessionFiles.has(c.path)}
                   onOpen={() => onOpenChat(c.path)}
                   onDelete={() => onDeleteChat(c.path)}
-                  onClose={() => onCloseChat(c.path)}
                 />
               ))}
             </div>
@@ -1145,18 +1144,13 @@ function AgentSidebar({
 function ChatRow({
   chat,
   active,
-  open,
   onOpen,
   onDelete,
-  onClose,
 }: {
   chat: AgentSessionListEntry
   active: boolean
-  /** True when this chat has a live pi process in the current panel. */
-  open: boolean
   onOpen: () => void
   onDelete: () => void
-  onClose: () => void
 }) {
   const [hovered, setHovered] = useState(false)
   return (
@@ -1170,36 +1164,19 @@ function ChatRow({
       <button
         onClick={onOpen}
         className="flex-1 min-w-0 flex items-center gap-1.5 px-1 py-1 text-left"
-        title={`${chat.title}\n${chat.messageCount} messages · ${new Date(chat.updatedAt).toLocaleString()}${open ? '\nRunning in background' : ''}`}
+        title={`${chat.title}\n${chat.messageCount} messages · ${new Date(chat.updatedAt).toLocaleString()}`}
       >
         <ChatCircleDots size={11} className={chat.named ? 'text-agent-light shrink-0' : 'text-muted shrink-0'} />
         <span className="truncate text-[11.5px] text-primary">{chat.title}</span>
-        {open && !active && (
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-agent-light shrink-0"
-            aria-label="Open in background"
-          />
-        )}
       </button>
       {hovered && (
-        <>
-          {open && !active && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onClose() }}
-              className="p-1 rounded-md text-muted hover:text-primary hover:bg-white/10"
-              title="Close background session (keeps chat on disk)"
-            >
-              <Stop size={10} />
-            </button>
-          )}
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="p-1 rounded-md text-muted hover:text-primary hover:bg-white/10"
-            title="Delete chat"
-          >
-            <Trash size={10} />
-          </button>
-        </>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete() }}
+          className="p-1 rounded-md text-muted hover:text-primary hover:bg-white/10"
+          title="Delete chat"
+        >
+          <Trash size={10} />
+        </button>
       )}
     </div>
   )
@@ -1494,10 +1471,12 @@ function CompactButton({
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  const { target: portalTarget, toLocal } = useNodePortalTarget(btnRef)
+  const { getTarget, toLocal } = useNodePortalTarget(btnRef)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   useEffect(() => {
     if (!open) return
+    setPortalTarget(getTarget())
     const handler = (e: MouseEvent) => {
       if (btnRef.current?.contains(e.target as Node)) return
       if (popoverRef.current?.contains(e.target as Node)) return
@@ -1505,7 +1484,7 @@ function CompactButton({
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+  }, [open, getTarget])
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return
     const r = btnRef.current.getBoundingClientRect()
@@ -1585,10 +1564,12 @@ function StatsChip({
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  const { target: portalTarget, toLocal } = useNodePortalTarget(btnRef)
+  const { getTarget, toLocal } = useNodePortalTarget(btnRef)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   useEffect(() => {
     if (!open) return
+    setPortalTarget(getTarget())
     const handler = (e: MouseEvent) => {
       if (btnRef.current?.contains(e.target as Node)) return
       if (popoverRef.current?.contains(e.target as Node)) return
@@ -1596,7 +1577,7 @@ function StatsChip({
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+  }, [open, getTarget])
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return
     const r = btnRef.current.getBoundingClientRect()

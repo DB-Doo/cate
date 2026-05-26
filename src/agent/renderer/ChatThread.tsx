@@ -11,24 +11,21 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
-  CaretRight,
-  CaretDown,
-  CheckCircle,
-  XCircle,
-  Spinner,
   Wrench,
   PencilSimple,
   Terminal as TerminalIcon,
   FileText,
   MagnifyingGlass,
-  Brain,
   Copy,
-  Sparkle,
   ClipboardText,
+  ArrowClockwise,
+  WarningCircle,
+  Info,
 } from '@phosphor-icons/react'
 import type {
   AgentMessage,
   DiffInfo,
+  RetryState,
   SubagentResult,
   SubagentToolCall,
   ToolMessage,
@@ -51,9 +48,12 @@ interface ChatThreadProps {
   onImplementPlan?: () => void
   onRefinePlan?: (text: string) => void
   onClearAndImplement?: () => void
+  /** Connection retry state — rendered inline at the tail of the chat. */
+  retry?: RetryState
+  onAbortRetry?: () => void
 }
 
-export function ChatThread({ messages, pendingApprovals, onApproval, running, forkMap, onFork, onEditResend, onImplementPlan, onRefinePlan, onClearAndImplement }: ChatThreadProps) {
+export function ChatThread({ messages, pendingApprovals, onApproval, running, forkMap, onFork, onEditResend, onImplementPlan, onRefinePlan, onClearAndImplement, retry, onAbortRetry }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Show the thinking indicator whenever the agent is busy and the tail of
@@ -106,6 +106,7 @@ export function ChatThread({ messages, pendingApprovals, onApproval, running, fo
             onClearAndImplement={onClearAndImplement}
             isLast={idx === messages.length - 1}
             showModelTag={showModelTag}
+            agentRunning={running}
           />
         )
       })}
@@ -116,6 +117,9 @@ export function ChatThread({ messages, pendingApprovals, onApproval, running, fo
           onDecide={(decision) => onApproval(req.toolCallId, decision)}
         />
       ))}
+      {retry && (retry.active || retry.finalError) && (
+        <RetryIndicator state={retry} onAbort={onAbortRetry} />
+      )}
       {showThinking && <ThinkingDots />}
     </div>
   )
@@ -127,6 +131,41 @@ function ThinkingDots() {
       <span className="w-1.5 h-1.5 rounded-full bg-agent-light/80 animate-thinking-dot [animation-delay:0ms]" />
       <span className="w-1.5 h-1.5 rounded-full bg-agent-light/80 animate-thinking-dot [animation-delay:160ms]" />
       <span className="w-1.5 h-1.5 rounded-full bg-agent-light/80 animate-thinking-dot [animation-delay:320ms]" />
+    </div>
+  )
+}
+
+function RetryIndicator({ state, onAbort }: { state: RetryState; onAbort?: () => void }) {
+  if (state.active) {
+    const delay = state.delayMs != null ? `${Math.round(state.delayMs / 1000)}s` : '…'
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[12px]">
+        <ArrowClockwise size={13} className="text-amber-400 animate-spin shrink-0" />
+        <div className="flex-1 min-w-0">
+          <span className="text-amber-200">
+            Retrying ({state.attempt ?? '?'}/{state.maxAttempts ?? '?'}) in {delay}
+          </span>
+          {state.errorMessage && (
+            <div className="text-[11px] text-amber-200/60 mt-0.5 truncate">{state.errorMessage}</div>
+          )}
+        </div>
+        {onAbort && (
+          <button
+            onClick={onAbort}
+            className="px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-amber-200 text-[11px] shrink-0"
+          >
+            Abort
+          </button>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[12px]">
+      <WarningCircle size={13} weight="fill" className="text-red-400 shrink-0" />
+      <span className="text-red-300">
+        Retries exhausted{state.finalError ? `: ${state.finalError.length > 120 ? state.finalError.slice(0, 120) + '…' : state.finalError}` : ''}
+      </span>
     </div>
   )
 }
@@ -145,6 +184,7 @@ function MessageRow({
   onClearAndImplement,
   isLast,
   showModelTag,
+  agentRunning,
 }: {
   msg: AgentMessage
   forkEntryId?: string
@@ -155,6 +195,7 @@ function MessageRow({
   onClearAndImplement?: () => void
   isLast?: boolean
   showModelTag?: boolean
+  agentRunning?: boolean
 }) {
   if (msg.type === 'user') {
     return (
@@ -185,7 +226,7 @@ function MessageRow({
           <Markdown text={msg.text} />
           {msg.streaming && !msg.text && msg.thinking ? null : msg.streaming && <CursorBlink />}
         </div>
-        {!msg.streaming && (
+        {!msg.streaming && showModelTag && !agentRunning && (
           <div className="flex items-center gap-0.5 text-muted">
             <button
               onClick={() => { void navigator.clipboard.writeText(msg.text) }}
@@ -194,7 +235,7 @@ function MessageRow({
             >
               <Copy size={11} />
             </button>
-            {showModelTag && (msg.model || msg.createdAt) && (
+            {(msg.model || msg.createdAt) && (
               <span className="text-[10.5px] text-zinc-500 ml-1">
                 {msg.model}
                 {msg.model && msg.createdAt ? ' · ' : ''}
@@ -246,17 +287,12 @@ function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }
     <div className="text-[12px]">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1.5 text-left text-muted hover:text-primary"
+        className={`w-full flex items-center gap-1.5 text-left text-muted hover:text-primary ${streaming ? 'cate-notif-pulse' : ''}`}
       >
-        {expanded
-          ? <CaretDown size={9} className="shrink-0" />
-          : <CaretRight size={9} className="shrink-0" />}
-        <Brain size={11} className="text-agent-light/80 shrink-0" />
-        <span>Reasoning</span>
-        {streaming && <Spinner size={10} className="text-agent-light animate-spin" />}
+        <span>Thinking</span>
       </button>
       {expanded && (
-        <pre className="mt-1 pl-5 text-[11px] text-primary/70 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-[260px] overflow-auto">
+        <pre className="mt-1 pl-4 text-[11px] text-primary/70 whitespace-pre-wrap break-words font-mono leading-snug max-h-[280px] overflow-auto">
           {text}
         </pre>
       )}
@@ -404,15 +440,15 @@ function CodePreview({
   const truncated = lines.length > maxLines
   const shown = truncated ? lines.slice(0, maxLines) : lines
   return (
-    <div className="font-mono text-[11px] leading-snug max-h-[320px] overflow-auto">
+    <div className="font-mono text-[11px] leading-snug max-h-[280px] overflow-auto">
       {shown.map((l, i) => (
-        <div key={i} className="flex gap-2">
-          <span className="text-muted/40 select-none w-8 text-right shrink-0">{startLine + i}</span>
+        <div key={i} className="flex">
+          <span className="text-muted/40 select-none w-5 text-right pr-1.5 shrink-0">{startLine + i}</span>
           <span className="whitespace-pre-wrap break-words text-primary/85 flex-1">{l || ' '}</span>
         </div>
       ))}
       {truncated && (
-        <div className="text-muted text-[10.5px] mt-1 pl-10">
+        <div className="text-muted text-[10.5px] mt-1 pl-5">
           … {lines.length - maxLines} more line{lines.length - maxLines === 1 ? '' : 's'}
         </div>
       )}
@@ -439,13 +475,7 @@ function toolVerb(msg: ToolMessage): string {
 }
 
 function ToolCard({ msg }: { msg: ToolMessage }) {
-  // Borderless, inline-on-chat row. For edit/write tools the diff renders
-  // inline by default (it's the whole point); expanding reveals raw args or
-  // tool output. For everything else, expand toggles args + result.
-  //
-  // Tool messages restored from a saved transcript don't carry a precomputed
-  // `msg.diff` (it's only set on tool_execution_end), so we re-derive on the
-  // fly from name + args.
+  const isBash = msg.name === 'bash' || msg.name === 'shell'
   const isRead = msg.name === 'read' || msg.name === 'view'
   const isWrite = msg.name === 'write'
   const diff = useMemo(
@@ -455,11 +485,9 @@ function ToolCard({ msg }: { msg: ToolMessage }) {
   const isEditish = !!diff
   const [expanded, setExpanded] = useState(false)
   const liveOutput = msg.status === 'running' ? msg.partialText : undefined
-  const Icon = toolIcon(msg.name)
   const verb = toolVerb(msg)
   const summary = toolSummary(msg)
 
-  // Pull the relevant pieces for read / write custom views.
   const a = (msg.args ?? {}) as Record<string, unknown>
   const writeContent = isWrite
     ? ((a.content as string) ?? (a.text as string) ?? '')
@@ -474,24 +502,49 @@ function ToolCard({ msg }: { msg: ToolMessage }) {
     (isRead && readBody.length > 0) ||
     !!msg.result || !!liveOutput || !!msg.error || msg.args != null
 
+  const isRunning = msg.status === 'running' || msg.status === 'pending'
+
+  if (isBash) {
+    const cmd = (a.command as string) ?? (a.cmd as string) ?? ''
+    const output = liveOutput ?? msg.result ?? ''
+    const hasOutput = !!output || !!msg.error
+    return (
+      <div className="text-[12px]">
+        <button
+          onClick={() => hasOutput && setExpanded((v) => !v)}
+          className={`w-full flex items-center gap-1.5 text-left ${isRunning ? 'cate-notif-pulse' : ''} ${hasOutput ? 'hover:text-primary' : 'cursor-default'}`}
+        >
+          <span className="text-muted shrink-0">{verb}</span>
+          <span className="truncate text-primary/90 font-mono flex-1">{cmd}</span>
+        </button>
+        {expanded && hasOutput && (
+          <div className="mt-1 pl-4 max-h-[280px] overflow-auto font-mono text-[11px] leading-snug">
+            <pre className="text-primary/80 whitespace-pre-wrap break-words">
+              {output}
+              {isRunning && <span className="inline-block w-[2px] h-[1em] align-middle bg-primary/80 ml-0.5 animate-pulse" />}
+            </pre>
+            {msg.error && (
+              <pre className="text-rose-300/90 whitespace-pre-wrap break-words">
+                {msg.error}
+              </pre>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="text-[12px]">
       <button
         onClick={() => hasExtras && setExpanded((v) => !v)}
-        className={`w-full flex items-center gap-1.5 text-left ${hasExtras ? 'hover:text-primary' : 'cursor-default'}`}
+        className={`w-full flex items-center gap-1.5 text-left ${isRunning ? 'cate-notif-pulse' : ''} ${hasExtras ? 'hover:text-primary' : 'cursor-default'}`}
       >
-        {hasExtras
-          ? expanded
-            ? <CaretDown size={9} className="text-muted shrink-0" />
-            : <CaretRight size={9} className="text-muted shrink-0" />
-          : <span className="w-[9px] shrink-0" />}
-        <Icon size={11} className="text-muted shrink-0" />
         <span className="text-muted shrink-0">{verb}</span>
         <span className="truncate text-primary/90 font-mono flex-1">{summary}</span>
-        <StatusIcon status={msg.status} />
       </button>
       {expanded && hasExtras && (
-        <div className="mt-1 pl-5 space-y-1.5">
+        <div className="mt-1 pl-4 space-y-1.5">
           {isEditish && diff && <DiffView diff={diff} />}
           {isWrite && writeContent && (
             <CodePreview text={writeContent} />
@@ -500,23 +553,23 @@ function ToolCard({ msg }: { msg: ToolMessage }) {
             <CodePreview text={readBody} startLine={readStartLine} />
           )}
           {!isEditish && !isWrite && !isRead && (
-            <pre className="text-[11px] text-muted whitespace-pre-wrap break-words font-mono leading-relaxed max-h-[180px] overflow-auto">
+            <pre className="text-[11px] text-muted whitespace-pre-wrap break-words font-mono leading-snug max-h-[280px] overflow-auto">
               {prettyArgs(msg.args)}
             </pre>
           )}
           {liveOutput && (
-            <pre className="text-[11px] text-primary/80 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-[240px] overflow-auto">
+            <pre className="text-[11px] text-primary/80 whitespace-pre-wrap break-words font-mono leading-snug max-h-[280px] overflow-auto">
               {liveOutput}
               <span className="inline-block w-[2px] h-[1em] align-middle bg-primary/80 ml-0.5 animate-pulse" />
             </pre>
           )}
-          {!isRead && msg.result && (
-            <pre className="text-[11px] text-primary/80 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-[240px] overflow-auto">
+          {!isRead && !isEditish && msg.result && (
+            <pre className="text-[11px] text-primary/80 whitespace-pre-wrap break-words font-mono leading-snug max-h-[280px] overflow-auto">
               {msg.result}
             </pre>
           )}
           {msg.error && (
-            <pre className="text-[11px] text-rose-300/90 whitespace-pre-wrap break-words font-mono leading-relaxed">
+            <pre className="text-[11px] text-rose-300/90 whitespace-pre-wrap break-words font-mono leading-snug">
               {msg.error}
             </pre>
           )}
@@ -571,50 +624,27 @@ function SubagentCard({ msg }: { msg: ToolMessage }) {
   const results = msg.subagent?.results ?? fallbackResults
 
   const running = msg.status === 'running' || msg.status === 'pending'
-  const total = results.length
-  const done = results.filter((r) => r.exitCode !== -1).length
-  const succeeded = results.filter((r) => r.exitCode === 0).length
-  const failed = results.filter((r) => r.exitCode > 0).length
-  const inFlight = total - done
-
-  const headerStatus = (() => {
-    if (msg.status === 'error') {
-      return failed > 0 ? `${failed} failed` : 'error'
-    }
-    if (msg.status === 'success') {
-      return failed > 0 ? `${succeeded} ok · ${failed} failed` : `${succeeded || total} done`
-    }
-    if (total === 0) return 'starting…'
-    return `${done}/${total} done${inFlight > 0 ? ` · ${inFlight} running` : ''}`
-  })()
 
   return (
-    <div className="rounded-lg border border-agent/20 bg-agent/[0.04] overflow-hidden text-[12px]">
+    <div className="text-[12px]">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-agent/[0.08] text-left"
+        className={`w-full flex items-center gap-1.5 text-left hover:text-primary ${running ? 'cate-notif-pulse' : ''}`}
       >
-        {expanded
-          ? <CaretDown size={10} className="text-muted shrink-0" />
-          : <CaretRight size={10} className="text-muted shrink-0" />}
-        <Sparkle size={13} weight="duotone" className="text-agent-light shrink-0" />
-        <span className="text-primary/90 font-medium shrink-0">Subagent</span>
-        <span className="flex-1 text-muted text-[11px] truncate text-right">{headerStatus}</span>
-        {running
-          ? <Spinner size={11} className="text-agent-light animate-spin shrink-0" />
-          : msg.status === 'error'
-          ? <XCircle size={12} weight="fill" className="text-rose-400 shrink-0" />
-          : <CheckCircle size={12} weight="fill" className="text-agent-light shrink-0" />}
+        <span className="text-muted shrink-0">subagent</span>
+        <span className="truncate text-primary/90 font-mono flex-1">
+          {results.length > 0 ? `${results.length} task${results.length > 1 ? 's' : ''}` : ''}
+        </span>
       </button>
       {expanded && (
-        <div className="border-t border-agent/15 px-2 py-2 space-y-1.5">
+        <div className="mt-1 pl-4 space-y-1.5">
           {results.length === 0 ? (
-            <div className="text-[11px] text-muted italic px-1 py-1">Waiting for subagent to start…</div>
+            <div className="text-[11px] text-muted italic font-mono leading-snug">Waiting for subagent to start…</div>
           ) : (
             results.map((r, i) => <SubagentResultRow key={i} result={r} parentRunning={running} />)
           )}
           {msg.error && (
-            <pre className="mt-1 text-[11px] text-rose-300 whitespace-pre-wrap break-words font-mono leading-relaxed bg-rose-500/10 rounded p-2">
+            <pre className="text-[11px] text-rose-300/90 whitespace-pre-wrap break-words font-mono leading-snug">
               {msg.error}
             </pre>
           )}
@@ -631,8 +661,10 @@ function SubagentResultRow({
   result: SubagentResult
   parentRunning: boolean
 }) {
-  const isRunning = result.exitCode === -1 && parentRunning
-  const isError = result.exitCode > 0
+  const terminalStop = result.stopReason === 'stop' || result.stopReason === 'error' ||
+    result.stopReason === 'length' || result.stopReason === 'aborted'
+  const isRunning = parentRunning && !terminalStop
+  const isError = !isRunning && result.exitCode > 0
   const [expanded, setExpanded] = useState(isRunning)
   // Auto-open while running, auto-close on completion (only if user hasn't toggled).
   const userToggled = useRef(false)
@@ -651,55 +683,44 @@ function SubagentResultRow({
   if (result.usage?.output) usageBits.push(`↓${formatTokensShort(result.usage.output)}`)
   if (result.usage?.cost) usageBits.push(`$${result.usage.cost.toFixed(3)}`)
 
+  const status: ToolMessage['status'] = isRunning ? 'running' : isError ? 'error' : 'success'
+  const summary = result.task
+  const hasExtras = result.parts.length > 0 || !!result.errorMessage || !!result.stderr || !!result.finalText
+
   return (
-    <div className="rounded-md bg-black/20 border border-white/[0.04] overflow-hidden">
+    <div className="text-[12px]">
       <button
         onClick={toggle}
-        className="w-full flex items-start gap-2 px-2 py-1.5 hover:bg-white/[0.03] text-left"
+        className={`w-full flex items-center gap-1.5 text-left ${isRunning ? 'cate-notif-pulse' : ''} ${hasExtras ? 'hover:text-primary' : 'cursor-default'}`}
       >
-        <div className="shrink-0 mt-[2px]">
-          {isRunning
-            ? <Spinner size={11} className="text-agent-light animate-spin" />
-            : isError
-            ? <XCircle size={11} weight="fill" className="text-rose-400" />
-            : result.exitCode === 0
-            ? <CheckCircle size={11} weight="fill" className="text-agent-light" />
-            : <Spinner size={11} className="text-muted" />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-[11.5px] text-agent-light shrink-0">{result.agent}</span>
-            {result.step != null && (
-              <span className="text-[10px] text-muted shrink-0">#{result.step}</span>
-            )}
-            {result.agentSource === 'project' && (
-              <span className="text-[9px] uppercase tracking-wider px-1 rounded bg-amber-500/15 text-amber-300">
-                project
-              </span>
-            )}
-            <span className="text-[11.5px] text-primary/85 truncate flex-1">{result.task}</span>
-            {expanded
-              ? <CaretDown size={9} className="text-muted shrink-0" />
-              : <CaretRight size={9} className="text-muted shrink-0" />}
-          </div>
-          {usageBits.length > 0 && (
-            <div className="mt-0.5 text-[10.5px] text-muted font-mono">
+        <span className="font-mono text-[11px] text-muted shrink-0">{result.agent}</span>
+        {result.step != null && (
+          <span className="text-[10px] text-muted shrink-0">#{result.step}</span>
+        )}
+        <span className="truncate text-primary/90 flex-1">{summary}</span>
+        {usageBits.length > 0 && (
+          <span
+            className="relative shrink-0 group/info"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Info size={11} className="text-muted hover:text-primary/70 cursor-help" />
+            <span className="absolute bottom-full right-0 mb-1 hidden group-hover/info:block whitespace-nowrap text-[10px] text-primary/90 font-mono bg-surface border border-white/10 rounded px-1.5 py-1 shadow-lg z-10">
               {usageBits.join(' · ')}{result.model ? ` · ${result.model}` : ''}
-            </div>
-          )}
-        </div>
+            </span>
+          </span>
+        )}
       </button>
-      {expanded && (
-        <div className="border-t border-white/5 px-2.5 py-1.5 space-y-1">
+      {expanded && hasExtras && (
+        <div className="mt-1 pl-4 space-y-1">
           {result.parts.length === 0 && !result.errorMessage && !result.stderr && (
-            <div className="text-[11px] text-muted italic">
+            <div className="text-[11px] text-muted italic font-mono leading-snug">
               {isRunning ? 'Working…' : '(no output)'}
             </div>
           )}
           {result.parts.map((p, i) => {
             if (p.type === 'text' && p.text) {
               return (
-                <div key={i} className="text-[12px] text-primary/90 leading-relaxed">
+                <div key={i} className="text-[12px] text-primary/90 leading-snug">
                   <Markdown text={p.text} />
                 </div>
               )
@@ -710,17 +731,17 @@ function SubagentResultRow({
             return null
           })}
           {result.errorMessage && (
-            <pre className="text-[11px] text-rose-300 whitespace-pre-wrap break-words font-mono leading-relaxed bg-rose-500/10 rounded p-2">
+            <pre className="text-[11px] text-rose-300/90 whitespace-pre-wrap break-words font-mono leading-snug">
               {result.errorMessage}
             </pre>
           )}
           {result.stderr && (
-            <pre className="text-[11px] text-muted whitespace-pre-wrap break-words font-mono leading-relaxed bg-black/30 rounded p-2 max-h-[160px] overflow-auto">
+            <pre className="text-[11px] text-muted whitespace-pre-wrap break-words font-mono leading-snug max-h-[280px] overflow-auto">
               {result.stderr}
             </pre>
           )}
           {!isRunning && result.exitCode === 0 && result.parts.length === 0 && result.finalText && (
-            <div className="text-[12px] text-primary/90 leading-relaxed">
+            <div className="text-[12px] text-primary/90 leading-snug">
               <Markdown text={result.finalText} />
             </div>
           )}
@@ -920,18 +941,6 @@ function PlanReadyCard({
   )
 }
 
-function StatusIcon({ status }: { status: ToolMessage['status'] }) {
-  switch (status) {
-    case 'pending':
-    case 'running':
-      return <Spinner size={11} className="text-agent-light animate-spin shrink-0" />
-    case 'success':
-      return <CheckCircle size={11} weight="fill" className="text-agent-light shrink-0" />
-    case 'error':
-    case 'denied':
-      return <XCircle size={11} weight="fill" className="text-muted shrink-0" />
-  }
-}
 
 function prettyArgs(args: unknown): string {
   try {
@@ -1008,25 +1017,42 @@ function lineDiff(before: string, after: string): DiffLine[] {
 
 function DiffView({ diff }: { diff: DiffInfo }) {
   const lines = useMemo(() => buildDiffLines(diff), [diff])
+  let oldLine = 1
+  let newLine = 1
   return (
-    <div className="max-h-[280px] overflow-auto font-mono text-[11px] leading-snug">
-      {lines.map((l, i) => (
-        <div
-          key={i}
-          className={
-            l.kind === 'add'
-              ? 'text-agent-light'
-              : l.kind === 'del'
-              ? 'text-rose-300/80 line-through decoration-rose-400/30'
-              : 'text-muted'
-          }
-        >
-          <span className="inline-block w-3 text-center select-none opacity-60">
-            {l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' '}
-          </span>
-          <span className="whitespace-pre-wrap break-words">{l.text || ' '}</span>
-        </div>
-      ))}
+    <div className="max-h-[280px] overflow-auto font-mono text-[11px] leading-[1.45]">
+      {lines.map((l, i) => {
+        let ln: string
+        if (l.kind === 'del') { ln = String(oldLine++); }
+        else if (l.kind === 'add') { ln = String(newLine++); }
+        else { ln = String(oldLine++); newLine++; }
+        return (
+          <div
+            key={i}
+            className={`flex ${
+              l.kind === 'add'
+                ? 'bg-emerald-500/[0.08]'
+                : l.kind === 'del'
+                ? 'bg-rose-500/[0.08]'
+                : ''
+            }`}
+          >
+            <span className="w-5 text-right pr-1.5 select-none text-muted/30 shrink-0">{ln}</span>
+            <span className={`w-3 text-center select-none shrink-0 ${
+              l.kind === 'add' ? 'text-emerald-400/70' : l.kind === 'del' ? 'text-rose-400/70' : 'text-transparent'
+            }`}>
+              {l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' '}
+            </span>
+            <span className={`whitespace-pre-wrap break-words flex-1 pr-2 ${
+              l.kind === 'add'
+                ? 'text-emerald-300/90'
+                : l.kind === 'del'
+                ? 'text-rose-300/70 line-through decoration-rose-400/20'
+                : 'text-primary/50'
+            }`}>{l.text || ' '}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -551,20 +551,20 @@ function ThinkingBars({ count, size = 10 }: { count: number; size?: number }) {
 }
 
 function useNodePortalTarget(ref: React.RefObject<Element | null>) {
-  const [target, setTarget] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    const el = ref.current?.closest('[data-node-id]') as HTMLElement | null
-    setTarget(el)
-  }, [ref])
+  const getTarget = useCallback(
+    () => ref.current?.closest('[data-node-id]') as HTMLElement | null,
+    [ref],
+  )
   const toLocal = useCallback(
     (viewport: { top: number; left: number }) => {
+      const target = getTarget()
       if (!target) return viewport
       const tr = target.getBoundingClientRect()
       return { top: viewport.top - tr.top, left: viewport.left - tr.left }
     },
-    [target],
+    [getTarget],
   )
-  return { target, toLocal }
+  return { getTarget, toLocal }
 }
 
 export function ThinkingLevelPicker({
@@ -579,10 +579,12 @@ export function ThinkingLevelPicker({
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  const { target: portalTarget, toLocal } = useNodePortalTarget(btnRef)
+  const { getTarget, toLocal } = useNodePortalTarget(btnRef)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   useEffect(() => {
     if (!open) return
+    setPortalTarget(getTarget())
     const handler = (e: MouseEvent) => {
       if (btnRef.current?.contains(e.target as Node)) return
       if (popoverRef.current?.contains(e.target as Node)) return
@@ -590,7 +592,7 @@ export function ThinkingLevelPicker({
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+  }, [open, getTarget])
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return
     const r = btnRef.current.getBoundingClientRect()

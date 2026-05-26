@@ -9,7 +9,7 @@
 <h1 align="center">Cate</h1>
 
 <p align="center">
-  A spatial desktop IDE with an infinite canvas for code, terminals, browsers, and git.
+  A spatial desktop IDE with an infinite canvas for code, terminals, browsers, documents, AI agents, and git.
 </p>
 
 <p align="center">
@@ -52,47 +52,45 @@ Cate replaces that pile of windows with **one persistent canvas per project**. T
 - **Infinite canvas** — zoom, pan, and arrange panels anywhere in freeform space. Pan with two-finger drag or right-click drag; zoom with `Cmd+scroll` or the canvas controls.
 - **Dock system** — drag floating panels onto the dock to create tabs and splits. Each dock zone (center, left, right, bottom) can hold multiple tabs with type-colored icons.
 - **Detached windows** — pull panels or full dock layouts into separate OS windows.
-- **Saved layouts** — name, save, load, and delete canvas arrangements (nodes, regions, zoom, viewport) from an in-app modal (`Cmd+K → "Saved Layouts…"`).
+- **Saved layouts** — name, save, load, and delete canvas arrangements (nodes and regions) from an in-app modal (`Cmd+K → "Saved Layouts…"`).
 - **Multi-workspace sessions** — keep several projects open and restore them on restart. Switch between workspaces from the sidebar.
 
-### 💻 Code & Terminals
+### 💻 Code, Docs & Terminals
 
-- **Monaco Editor panels** — full VS Code-grade editing with syntax highlighting, multi-cursor, find/replace, and diff support. Scratch editors persist unsaved content across sessions.
-- **Path breadcrumbs** — thin strip above each editor showing the workspace-relative path (`folder › folder › file.ts`). Absolute path in the tooltip.
+- **Monaco Editor panels** — full VS Code-grade editing with syntax highlighting, multi-cursor, find/replace, diff support, and Markdown Preview/Source mode with GFM rendering. Scratch editors persist unsaved content across sessions.
+- **Persistent editor buffers** — file-backed models are reused across panels, and scratch editor content persists with the session.
+- **Document panels** — native canvas viewers for PDFs, DOCX files, and images, with file type detection backed by magic-byte checks.
 - **Native terminals** — xterm.js with WebGL rendering, backed by `node-pty` PTYs rooted in the active workspace. Shell auto-detection with graceful fallback if the configured shell is unavailable.
 - **Browser panels** — embedded webview panels for previewing documentation, dev servers, or any URL. Context-isolated with hardened security settings.
 
 ### 🔧 Git & Source Control
 
-- **Git-aware file explorer** — file tree with live filesystem watching and git status indicators. Copy/paste files and folders with collision-safe renaming.
+- **Git-aware file explorer** — file tree with live filesystem watching, tracked/untracked dimming, search, and copy/paste for files and folders with collision-safe renaming.
 - **Source control sidebar** — stage/unstage, branch management, worktrees, commit history, and inline diff views. Git monitor polls and surfaces changes automatically.
 - **Project-wide search** — full-text search across workspace files with instant results.
 
-### 🤖 Agent & MCP
+### 🤖 AI Agent
 
-- **Agent setup** — bootstrap Claude Code, OpenAI Codex, Gemini, Cursor, and OpenCode configs from the sidebar.
-- **MCP server editor** — add and edit `.mcp.json` entries with environment variables, parsed-args preview, and an inline **Validate** button that probes the server and shows its capabilities before writing anything to disk.
+- **Pi Agent panel** — run an in-app coding agent powered by `@earendil-works/pi-agent-core`, with chat threads, per-chat model restore, and workspace-aware panel placement.
+- **Provider auth & models** — connect OAuth providers such as Anthropic, OpenAI Codex, and GitHub Copilot, or API-key providers such as OpenAI, Google Gemini, OpenRouter, Groq, Mistral, DeepSeek, and more.
+- **Marketplace & plan mode** — install Pi extensions from the marketplace and use Cate's bundled plan-mode helper for agent-guided implementation planning.
 
 ### 🔍 Search & Navigation
 
 - **Canvas-wide search** (`Cmd+Shift+F`) — Spotlight-style overlay that searches workspace files, live terminal scrollback, and open panel titles/paths in one place. Recent-focus ranked results with colored type-tile icons.
-- **Panel switcher** (`Cmd+E`) — masonry grid showing all open panels with live previews. Includes dock-zone panels (File Explorer, Git, Project List, Canvas host).
-- **Command palette** (`Cmd+K`) — quick access to every action in the app. Unified Spotlight-style chrome across all overlays.
+- **Panel switcher** (`Ctrl+Space`) — compact keyboard overlay for jumping between open canvas panels and centering the selected node.
+- **Command palette** (`Cmd+K`) — quick access to commands, open panels, and workspace files. Unified Spotlight-style chrome across all overlays.
 
 ### 🖥️ Desktop Polish
 
 - **Auto-save & session restore** — all panel state, positions, and open files persist automatically.
 - **Optional macOS native window tabs** — group Cate windows in the system tab bar.
 - **Auto-update checks** — checks GitHub releases and notifies when a new version is available.
-- **Crash resilience** — smart crash-report filtering (no noise from React teardown or resource-load failures), shell fallback banners in the PTY, and atomic crash-report archiving to prevent dialog loops.
+- **Crash resilience** — Sentry diagnostics, session restore validation, shell fallback banners in the PTY, and guarded update/restart flows help prevent noisy or looping crash states.
 
 ## Install
 
-<<<<<<< HEAD
 If you just want to use Cate, download a prebuilt release — don't build from source. This repository currently targets **v1.0.1**.
-=======
-If you just want to use Cate, download a prebuilt release — don't build from source. This repository currently targets **v1.0.0**.
->>>>>>> ef86540 (chore: bump version to 1.0.0)
 
 | Platform | Formats | Link |
 |----------|---------|------|
@@ -178,37 +176,48 @@ Cate uses a context-isolated preload bridge for all IPC communication. Filesyste
 
 ```text
 src/
+├── agent/              # Embedded Pi coding-agent integration
+│   ├── main/           # Agent process manager, auth, marketplace, session files
+│   ├── renderer/       # Agent panel UI, chat thread, providers, model prefs
+│   └── extensions/     # Bundled Cate plan-mode Pi extension
 ├── main/               # Electron main process
-│   ├── ipc/            # IPC handlers (filesystem, git, terminal, workspace)
+│   ├── ipc/            # IPC handlers (filesystem, git, terminal, menu, drag)
+│   ├── analytics       # Update/app event analytics helpers
+│   ├── appContext      # Shared main-process app state
+│   ├── featureFlags    # Runtime feature flags
+│   ├── shellEnv        # Login-shell environment capture
 │   ├── shellResolver   # Shell path resolution with fallback chain
 │   ├── workspaceManager# Workspace lifecycle and session persistence
 │   ├── workspaceRoots  # Allowed-roots registration and validation
 │   ├── windowRegistry  # Window management (main, dock, detached)
 │   ├── webSecurity     # Webview hardening and CSP
 │   ├── auto-updater    # Update checks and release fetch
-│   ├── crashReporter   # Crash report capture and filtering
 │   ├── sentry          # Sentry integration
 │   ├── store           # electron-store persistence
+│   ├── jsonFileStore   # JSON-backed file persistence helpers
 │   ├── menu            # Application menu
 │   └── sessionTrust    # Session restore validation
 ├── preload/            # Context-isolated bridge exposed to the renderer
 ├── renderer/           # React 18 application
+│   ├── assets/         # Renderer images and asset declarations
 │   ├── canvas/         # Infinite canvas rendering, drag, resize, placement
 │   ├── docking/        # Tabs, splits, detached dock windows, drag/drop
-│   ├── panels/         # EditorPanel, TerminalPanel, BrowserPanel,
-│   │                   # FileExplorerPanel, GitPanel, ProjectListPanel,
-│   │                   # CanvasPanel
-│   ├── sidebar/        # WorkspaceTab, FileExplorer, SourceControlView,
-│   │                   # ProjectList, fileClipboard
-│   ├── dialogs/        # SavedLayoutsDialog, MCP editor dialog
-│   ├── ui/             # CommandPalette, GlobalSearch, PanelSwitcher,
-│   │                   # NodeSwitcher, WelcomePage, ShortcutHintOverlay
+│   ├── drag/           # Cross-window drag-and-drop runtime and state
+│   ├── panels/         # Terminal, Editor, Browser, Document, Git, Explorer,
+│   │                   # Projects, Canvas panel registry/components
+│   ├── sidebar/        # Workspace, File Explorer, Source Control,
+│   │                   # Parallel Work, Project List, fileClipboard
+│   ├── dialogs/        # Saved layouts and post-update feedback dialogs
+│   ├── settings/       # Settings window sections and shortcut recorder
+│   ├── ui/             # CommandPalette, GlobalSearch, NodeSwitcher,
+│   │                   # WelcomePage, ShortcutHintOverlay
 │   ├── shells/         # Main, panel, and dock window shells
-│   ├── stores/         # Zustand stores (canvas, app, settings, shortcut,
-│   │                   # status, ui)
-│   ├── hooks/          # Custom React hooks (useShortcuts, useNodeDrag, etc.)
-│   ├── drag/           # Drag-and-drop logic and state
-│   └── lib/            # Utilities (coordinates, git, filesystem helpers)
+│   ├── stores/         # Zustand stores (canvas, app, dock, settings,
+│   │                   # shortcut, status, ui, update, url prompt)
+│   ├── hooks/          # Custom React hooks (shortcuts, canvas interaction)
+│   ├── lib/            # Utilities (coordinates, routing, terminal registry)
+│   ├── workers/        # Monaco/editor workers
+│   └── styles/         # Tailwind/global styles
 └── shared/             # IPC channel definitions and shared TypeScript types
 ```
 
@@ -219,13 +228,17 @@ src/
 - **Zustand 5** — lightweight state management (no Redux/Context)
 - **Monaco Editor 0.52** — code editing (VS Code's editor component)
 - **xterm.js 5.5 + node-pty 1.0** — terminal emulator with WebGL renderer
+- **@earendil-works/pi packages** — embedded coding-agent runtime, provider auth, and extension marketplace
+- **pdf.js + mammoth** — native PDF and DOCX document rendering
+- **react-markdown + remark-gfm** — Markdown preview with GitHub Flavored Markdown
 - **simple-git 3.27** — git operations
 - **chokidar 4.0** — filesystem watching
+- **@phosphor-icons/react** — app iconography
 - **Tailwind CSS 3.4** — styling
 - **electron-vite 5.0** — bundling with HMR
 - **electron-builder 26** — packaging and distribution
 - **electron-updater 6.8** — update checks
-- **Sentry** — crash reporting and diagnostics
+- **Sentry Electron 5** — crash reporting and diagnostics
 - **Playwright** — end-to-end integration tests
 - **Vitest** — unit test runner
 
