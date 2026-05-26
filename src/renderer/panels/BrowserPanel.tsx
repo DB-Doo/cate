@@ -12,6 +12,7 @@ import { useCanvasStoreContext } from '../stores/CanvasStoreContext'
 import { SEARCH_ENGINE_URLS } from '../../shared/types'
 import type { BrowserPanelProps } from './types'
 import { portalRegistry } from '../lib/portalRegistry'
+import { isUrl, normalizeUrl } from './browserUrl'
 
 // -----------------------------------------------------------------------------
 // Type declarations for Electron's <webview> element
@@ -31,47 +32,6 @@ interface WebviewElement extends HTMLElement {
   getWebContentsId(): number
   addEventListener(type: string, listener: (event: any) => void): void
   removeEventListener(type: string, listener: (event: any) => void): void
-}
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-/** Check if input looks like a URL rather than a search query. */
-function isUrl(input: string): boolean {
-  const trimmed = input.trim()
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return true
-  }
-  // Has spaces — definitely a search query
-  if (trimmed.includes(' ')) {
-    return false
-  }
-  // Contains a dot — likely a domain (e.g. "example.com", "192.168.1.1")
-  if (trimmed.includes('.')) {
-    return true
-  }
-  // "localhost" or "localhost:port"
-  if (/^localhost(:\d+)?(\/.*)?$/.test(trimmed)) {
-    return true
-  }
-  // Explicit port on any host (e.g. "myhost:3000")
-  if (/^[\w-]+(:\d+)(\/.*)?$/.test(trimmed)) {
-    return true
-  }
-  return false
-}
-
-/** Normalize a URL string, prepending a protocol if none present.
- *  Uses http:// for localhost/127.0.0.1/[::1], https:// for everything else. */
-function normalizeUrl(input: string): string {
-  const trimmed = input.trim()
-  if (trimmed.startsWith('about:')) return trimmed
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed
-  }
-  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/.test(trimmed)
-  return `${isLocal ? 'http' : 'https'}://${trimmed}`
 }
 
 // -----------------------------------------------------------------------------
@@ -276,9 +236,9 @@ export default function BrowserPanel({
     const onWillNavigate = (event: any) => {
       try {
         const { protocol } = new URL(event.url)
-        if (protocol !== 'http:' && protocol !== 'https:') {
+        if (protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') {
           event.preventDefault()
-          console.warn('[BrowserPanel] Blocked navigation to non-http(s) URL:', event.url)
+          console.warn('[BrowserPanel] Blocked navigation to non-http(s)/file URL:', event.url)
         }
       } catch {
         event.preventDefault()

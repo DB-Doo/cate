@@ -35,7 +35,10 @@ export function isAllowedGuestUrl(url: string): boolean {
   if (url === 'about:blank') return true
   try {
     const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    // Allow file: so the browser panel can render local HTML files explicitly
+    // requested by the user via the address bar. Cross-origin reads from a
+    // remote page into file:// are blocked by the same-origin policy.
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'file:'
   } catch {
     return false
   }
