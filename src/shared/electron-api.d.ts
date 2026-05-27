@@ -237,6 +237,7 @@ export interface ElectronAPI {
       agentName: string | null,
       subprocessActive: boolean,
       agentPresent: boolean,
+      isStreaming: boolean,
     ) => void,
   ): () => void
 

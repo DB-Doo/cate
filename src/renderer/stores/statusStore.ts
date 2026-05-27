@@ -25,6 +25,9 @@ interface WorkspaceStatusState {
   subprocessActive: Record<string, boolean>
   /** terminalId → whether main's process-tree scan found a known agent CLI. */
   agentPresent: Record<string, boolean>
+  /** terminalId → whether the PTY produced output inside the streaming window
+   *  (proxy for "the agent is thinking or streaming a response"). */
+  agentStreaming: Record<string, boolean>
   nodeActivity: Record<CanvasNodeId, NodeActivityState>
   terminalTitles: Record<string, string>
   listeningPorts: Record<string, number[]>      // terminalId → ports
@@ -51,6 +54,7 @@ interface StatusStoreActions {
   setAgentName: (workspaceId: string, terminalId: string, name: string | null) => void
   setSubprocessActive: (workspaceId: string, terminalId: string, active: boolean) => void
   setAgentPresent: (workspaceId: string, terminalId: string, present: boolean) => void
+  setAgentStreaming: (workspaceId: string, terminalId: string, streaming: boolean) => void
   setNodeActivity: (nodeId: CanvasNodeId, state: NodeActivityState) => void
   clearNodeActivity: (nodeId: CanvasNodeId) => void
   setTerminalTitle: (terminalId: string, title: string) => void
@@ -90,6 +94,7 @@ function emptyWorkspaceStatus(): WorkspaceStatusState {
     agentName: {},
     subprocessActive: {},
     agentPresent: {},
+    agentStreaming: {},
     nodeActivity: {},
     terminalTitles: {},
     listeningPorts: {},
@@ -221,6 +226,23 @@ export const useStatusStore = create<StatusStore>((set, get) => ({
           [workspaceId]: {
             ...ws,
             agentPresent: { ...ws.agentPresent, [terminalId]: present },
+          },
+        },
+      }
+    })
+  },
+
+  setAgentStreaming(workspaceId, terminalId, streaming) {
+    get().ensureWorkspace(workspaceId)
+    set((state) => {
+      const ws = state.workspaces[workspaceId] ?? emptyWorkspaceStatus()
+      if (ws.agentStreaming[terminalId] === streaming) return state
+      return {
+        workspaces: {
+          ...state.workspaces,
+          [workspaceId]: {
+            ...ws,
+            agentStreaming: { ...ws.agentStreaming, [terminalId]: streaming },
           },
         },
       }
@@ -408,6 +430,7 @@ export const useStatusStore = create<StatusStore>((set, get) => ({
         const { [terminalId]: _an, ...remainingAgentName } = ws.agentName
         const { [terminalId]: _sa, ...remainingSubprocess } = ws.subprocessActive
         const { [terminalId]: _ap, ...remainingAgentPresent } = ws.agentPresent
+        const { [terminalId]: _as, ...remainingAgentStreaming } = ws.agentStreaming
         const { [terminalId]: _t, ...remainingTitles } = ws.terminalTitles
         updatedWorkspaces[workspaceId] = {
           ...ws,
@@ -418,6 +441,7 @@ export const useStatusStore = create<StatusStore>((set, get) => ({
           agentName: remainingAgentName,
           subprocessActive: remainingSubprocess,
           agentPresent: remainingAgentPresent,
+          agentStreaming: remainingAgentStreaming,
           terminalTitles: remainingTitles,
         }
       }

@@ -7,7 +7,11 @@ export const NEVER = -1e9
 export interface DetectorSignals {
   agentPresent: boolean
   wasAgentPresent: boolean
+  /** Age-filtered subprocess signal from `shell.ts` — covers quiet tools. */
   subprocessActive: boolean
+  /** PTY bytes/s above the streaming threshold — covers model output and the
+   *  thinking spinner. */
+  isStreaming: boolean
 }
 
 export interface HysteresisState {
@@ -18,7 +22,7 @@ export interface HysteresisState {
 export function computeRawState(s: DetectorSignals): AgentState {
   if (!s.agentPresent && s.wasAgentPresent) return 'finished'
   if (!s.agentPresent) return 'notRunning'
-  if (s.subprocessActive) return 'running'
+  if (s.isStreaming || s.subprocessActive) return 'running'
   return 'waitingForInput'
 }
 

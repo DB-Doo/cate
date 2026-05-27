@@ -17,11 +17,13 @@ export function useProcessMonitor(workspaceId: string): void {
         agentNameRaw: unknown,
         subprocessActiveRaw: unknown,
         agentPresentRaw: unknown,
+        isStreamingRaw: unknown,
       ) => {
         const terminalActivity = activityRaw as TerminalActivity
         const agentName = (agentNameRaw as string | null) ?? null
         const subprocessActive = subprocessActiveRaw === true
         const agentPresent = agentPresentRaw === true
+        const isStreaming = isStreamingRaw === true
 
         const actualWorkspaceId =
           useStatusStore.getState().terminalWorkspaceMap[terminalId] ?? workspaceId
@@ -30,6 +32,7 @@ export function useProcessMonitor(workspaceId: string): void {
         store().setSubprocessActive(actualWorkspaceId, terminalId, subprocessActive)
         store().setAgentPresent(actualWorkspaceId, terminalId, agentPresent)
         store().setAgentName(actualWorkspaceId, terminalId, agentName)
+        store().setAgentStreaming(actualWorkspaceId, terminalId, isStreaming)
       },
     )
 

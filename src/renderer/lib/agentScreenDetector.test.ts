@@ -15,10 +15,11 @@ function resetStore(): void {
   useStatusStore.setState({ workspaces: {}, _clearTimers: {}, terminalWorkspaceMap: {}, gitInfo: {} })
 }
 
-function setup(agentPresent: boolean, subprocessActive = false): void {
+function setup(agentPresent: boolean, subprocessActive = false, isStreaming = false): void {
   const s = useStatusStore.getState()
   s.setAgentPresent(WS, PTY, agentPresent)
   s.setSubprocessActive(WS, PTY, subprocessActive)
+  s.setAgentStreaming(WS, PTY, isStreaming)
   if (agentPresent) s.setAgentState(WS, PTY, 'notRunning', 'Claude Code')
 }
 
@@ -28,6 +29,7 @@ function tick(wasAgentPresent: boolean, h: HysteresisState, now: number): AgentS
     agentPresent: ws?.agentPresent[PTY] === true,
     wasAgentPresent,
     subprocessActive: ws?.subprocessActive[PTY] === true,
+    isStreaming: ws?.agentStreaming[PTY] === true,
   })
   const state = applyHysteresis(raw, h, now)
   if (h.lastReported !== state) {
@@ -52,20 +54,27 @@ describe('agent detection', () => {
     expect(displayed()).toBe('waitingForInput')
   })
 
-  it('subprocess → running', () => {
+  it('recent subprocess alone (no streaming) → running', () => {
     setup(true, true)
     const h: HysteresisState = { lastReported: null, pendingWaitingSince: null }
     tick(false, h, 0)
     expect(displayed()).toBe('running')
   })
 
-  it('subprocess ends → waitingForInput after hold', () => {
-    setup(true, true)
+  it('streaming output (no subprocess) → running', () => {
+    setup(true, false, true)
+    const h: HysteresisState = { lastReported: null, pendingWaitingSince: null }
+    tick(false, h, 0)
+    expect(displayed()).toBe('running')
+  })
+
+  it('streaming stops (no subprocess) → waitingForInput after hold', () => {
+    setup(true, false, true)
     const h: HysteresisState = { lastReported: null, pendingWaitingSince: null }
     tick(false, h, 0)
     expect(displayed()).toBe('running')
 
-    useStatusStore.getState().setSubprocessActive(WS, PTY, false)
+    useStatusStore.getState().setAgentStreaming(WS, PTY, false)
     tick(true, h, 100)
     expect(displayed()).toBe('running') // held
 

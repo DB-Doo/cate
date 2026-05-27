@@ -70,10 +70,12 @@ function tick(): void {
     const t = trackerFor(ptyId)
 
     const subprocessActive = ws.subprocessActive[ptyId] === true
+    const isStreaming = ws.agentStreaming[ptyId] === true
     const rawState = computeRawState({
       agentPresent,
       wasAgentPresent: t.wasAgentPresent,
       subprocessActive,
+      isStreaming,
     })
 
     t.wasAgentPresent = agentPresent
@@ -99,12 +101,8 @@ function tick(): void {
         action,
       })
     } else if (kind === 'finished') {
+      // Agent exit is intentional — only cancel any pending input prompt.
       waitingDebouncer?.cancel(ptyId)
-      sendOsNotification({
-        title: 'Task complete',
-        body: `${displayName} has finished running.`,
-        action,
-      })
     } else if (state !== 'waitingForInput' && prevState === 'waitingForInput') {
       waitingDebouncer?.cancel(ptyId)
     }
