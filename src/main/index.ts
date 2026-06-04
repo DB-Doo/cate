@@ -22,7 +22,7 @@ import { registerHandlers as registerFilesystemHandlers, stopWatchersForWindow }
 import { registerHandlers as registerGitHandlers } from './ipc/git'
 import { registerHandlers as registerShellHandlers, unregisterTerminalsForWindow, getRunningTerminals } from './ipc/shell'
 import { registerHandlers as registerGitMonitorHandlers, stopMonitorsForWindow } from './ipc/git-monitor'
-import { registerHandlers as registerStoreHandlers, loadSettingsSyncFromDisk, readBootSnapshot, writeBootSnapshot } from './store'
+import { registerHandlers as registerStoreHandlers, loadSettingsSyncFromDisk, readBootSnapshot, writeBootSnapshot, getSettingSync, setSettingsFromMain } from './store'
 import { registerProjectStateHandlers, saveProjectStateSync, runLegacyMigrationIfNeeded } from './projectWorkspaceStore'
 import { registerHandlers as registerMenuHandlers } from './ipc/menu'
 import { registerHandlers as registerNotificationHandlers } from './ipc/notifications'
@@ -42,8 +42,9 @@ import { listPersistentGrants, recordPersistentGrant } from './grantedPathStore'
 import { buildApplicationMenu, rebuildApplicationMenu, setNewMainWindowFn } from './menu'
 import { initShellEnv } from './shellEnv'
 import { initAutoUpdater, isInstallingUpdate } from './auto-updater'
-import { initSentry, captureMainException, flushSentry } from './sentry'
-import { initAnalytics, trackAppStart, checkAndReportUpdate } from './analytics'
+import { initSentry, captureMainException, captureMainMessage, flushSentry } from './sentry'
+import { initAnalytics, trackAppStart, checkAndReportUpdate, hasRunBefore, devSimulateUpdateFrom } from './analytics'
+import { TELEMETRY_SET_CONSENT } from '../shared/ipc-channels'
 import { beginTerminalTransfer, acknowledgeTerminalTransfer, handleCrossWindowDropTerminalTransfer } from './ipc/terminal'
 import type { CateWindowParams, DockWindowInitPayload, PanelState, PanelTransferSnapshot, WindowDockState } from '../shared/types'
 import { disableRendererSandbox, disableTrustScoping } from './featureFlags'
@@ -121,6 +122,108 @@ function revealWindow(win: BrowserWindow, opts: { focus?: boolean } = {}): void 
   } catch {
     /* window may already be destroyed */
   }
+}
+
+// =============================================================================
+// Renderer crash recovery.
+//
+// A renderer process can die from OOM, a GPU fault, or a native crash that
+// produces no JS stack — none of which React's ErrorBoundary can catch. Without
+// handling, the window simply goes blank and the user is stuck. We auto-reload
+// on the first crash (cheap, usually recovers a transient GPU/OOM blip) and fall
+// back to an explicit dialog if a window crash-loops, so we never spin forever.
+// =============================================================================
+
+const CRASH_RELOAD_WINDOW_MS = 30_000
+const MAX_RELOADS_IN_WINDOW = 3
+let unresponsiveDialogOpen = false
+
+async function showCrashLoopDialog(win: BrowserWindow, windowType: string, reason: string): Promise<void> {
+  if (win.isDestroyed()) return
+  let response = 0
+  try {
+    ;({ response } = await dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'A window keeps crashing',
+      message: 'This window’s display process exited unexpectedly several times.',
+      detail: `Reason: ${reason}. Auto-reloading hasn’t recovered it. You can try once more, or close the window — your other windows and saved work are unaffected.`,
+      buttons: ['Reload', 'Close Window'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    }))
+  } catch { /* dialog failed — leave the window as-is */ return }
+  if (win.isDestroyed()) return
+  if (response === 0) {
+    try { win.webContents.reload() } catch { /* noop */ }
+  } else {
+    try { win.close() } catch { /* noop */ }
+  }
+}
+
+async function showUnresponsiveDialog(win: BrowserWindow): Promise<void> {
+  if (unresponsiveDialogOpen || win.isDestroyed()) return
+  unresponsiveDialogOpen = true
+  try {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Cate is not responding',
+      message: 'This window has become unresponsive.',
+      detail: 'You can keep waiting in case it recovers, or force it to reload. Reloading discards any in-progress, unsaved work in this window.',
+      buttons: ['Keep Waiting', 'Reload'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    if (!win.isDestroyed() && response === 1) {
+      // forcefullyCrashRenderer kills a truly-hung renderer that a plain
+      // reload() can't preempt; render-process-gone then auto-reloads it.
+      try { win.webContents.forcefullyCrashRenderer() } catch { /* noop */ }
+    }
+  } catch { /* noop */ } finally {
+    unresponsiveDialogOpen = false
+  }
+}
+
+function installRendererCrashRecovery(win: BrowserWindow, windowType: string, windowId: number): void {
+  let reloads: number[] = []
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    // 'clean-exit' is a normal teardown (the window is closing) — not a crash.
+    if (details.reason === 'clean-exit') return
+    log.error(
+      '[crash] renderer gone window=%d type=%s reason=%s exitCode=%s',
+      windowId, windowType, details.reason, String(details.exitCode),
+    )
+    captureMainMessage('renderer-process-gone', {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      windowType,
+    })
+    if (win.isDestroyed()) return
+
+    const now = Date.now()
+    reloads = reloads.filter((t) => now - t < CRASH_RELOAD_WINDOW_MS)
+    if (reloads.length >= MAX_RELOADS_IN_WINDOW) {
+      reloads = []
+      void showCrashLoopDialog(win, windowType, details.reason)
+      return
+    }
+    reloads.push(now)
+    log.info('[crash] auto-reloading window=%d (attempt %d/%d)', windowId, reloads.length, MAX_RELOADS_IN_WINDOW)
+    try { win.webContents.reload() } catch (err) {
+      log.warn('[crash] reload failed: %s', err instanceof Error ? err.message : String(err))
+    }
+  })
+
+  win.on('unresponsive', () => {
+    log.warn('[crash] window unresponsive window=%d type=%s', windowId, windowType)
+    captureMainMessage('renderer-unresponsive', { windowType })
+    void showUnresponsiveDialog(win)
+  })
+  win.on('responsive', () => {
+    log.info('[crash] window responsive again window=%d', windowId)
+  })
 }
 
 function createWindow(params?: CateWindowParams): BrowserWindow {
@@ -217,6 +320,10 @@ function createWindow(params?: CateWindowParams): BrowserWindow {
   // Capture ID before window is destroyed (win.id throws after 'closed')
   const windowId = win.id
   log.info('Creating window type=%s id=%d', windowType, windowId)
+
+  // Recover from renderer crashes / hangs (OOM, GPU fault, native crash) that
+  // React's ErrorBoundary can't see.
+  installRendererCrashRecovery(win, windowType, windowId)
 
   // Re-arm grants for every persisted Save-As path so editors restored in
   // this window (any window type — main, panel, dock) can read+save their
@@ -1231,6 +1338,36 @@ if (!app.isPackaged) {
   app.setPath('userData', path.join(app.getPath('userData'), 'Dev'))
 }
 
+// First-start simulation (`npm run dev:firststart`). Point userData at a
+// dedicated dir that's wiped on every launch, so the app boots exactly like a
+// brand-new install: telemetry-consent prompt + onboarding tour, empty session,
+// no recent projects or saved window geometry. Dev-only; never in a packaged app.
+if (!app.isPackaged && process.env.CATE_FRESH_USERDATA === '1') {
+  const fs = require('fs') as typeof import('fs')
+  const dir = path.join(app.getPath('userData'), 'FirstStart')
+  try { fs.rmSync(dir, { recursive: true, force: true }) } catch { /* noop */ }
+  fs.mkdirSync(dir, { recursive: true })
+  app.setPath('userData', dir)
+  log.info('[firststart] fresh userData (wiped on each launch): %s', dir)
+}
+
+// Dev-only: simulate launching right after an update at a given level
+// (major / minor / patch). Uses its own wiped userData dir, then seeds the
+// analytics state so `checkAndReportUpdate` sees a version bump from a synthetic
+// previous version. The grandfather block below then treats it as an existing
+// (already-onboarded, already-consented) user, so only the post-update feedback
+// dialog can appear — major/minor show it, patch shows nothing. See dev:update:*.
+if (!app.isPackaged && (process.env.CATE_SIMULATE_UPDATE === 'major' || process.env.CATE_SIMULATE_UPDATE === 'minor' || process.env.CATE_SIMULATE_UPDATE === 'patch')) {
+  const level = process.env.CATE_SIMULATE_UPDATE
+  const fs = require('fs') as typeof import('fs')
+  const dir = path.join(app.getPath('userData'), `SimUpdate-${level}`)
+  try { fs.rmSync(dir, { recursive: true, force: true }) } catch { /* noop */ }
+  fs.mkdirSync(dir, { recursive: true })
+  app.setPath('userData', dir)
+  const from = devSimulateUpdateFrom(level)
+  log.info('[sim-update] %s: simulating update %s → %s (userData: %s)', level, from, app.getVersion(), dir)
+}
+
 // In E2E mode, use a fresh tmpdir per launch so Playwright runs are isolated
 // from each other and from local dev state. The harness sets CATE_E2E=1.
 if (process.env.CATE_E2E === '1') {
@@ -1302,11 +1439,72 @@ log.info('Cate v%s starting (electron %s, node %s, platform %s)', app.getVersion
 // them before the async electron-store finishes initializing.
 loadSettingsSyncFromDisk()
 
+// Scope the WHOLE first-run experience (telemetry-consent screen + onboarding
+// tour) to genuine first installs. Anyone who has launched Cate before (incl.
+// users upgrading from a pre-onboarding / pre-consent build) is marked as past
+// it, so an update shows ONLY the post-update feedback dialog — never the tour
+// and never the consent screen. Telemetry stays OFF for these grandfathered
+// users (they never opted in); they can enable it from Settings. Runs long
+// before the renderer queries settings, so there's no show/hide race.
+if (hasRunBefore()) {
+  if (!getSettingSync('onboardingCompleted')) {
+    void setSettingsFromMain({ onboardingCompleted: true })
+  }
+  if (!getSettingSync('telemetryConsentDecided')) {
+    void setSettingsFromMain({
+      telemetryConsentDecided: true,
+      crashReportingEnabled: false,
+      usageAnalyticsEnabled: false,
+    })
+  }
+}
+
+// Under Playwright the profile is a fresh tmpdir, which would otherwise trigger
+// the first-run consent + onboarding takeover and cover the canvas the specs
+// drive. Mark both as already handled so e2e starts on a clean canvas. Runs
+// before the renderer queries settings, so the dialogs never flash.
+if (IS_E2E) {
+  void setSettingsFromMain({ telemetryConsentDecided: true, onboardingCompleted: true })
+}
+
 // Initialize Sentry as early as possible — after settings load (so the opt-out
 // is honored) but before any IPC handlers or windows. No-op if DSN unset or
 // the user has disabled crash reporting.
 initSentry()
 initAnalytics()
+
+// Fire the first-run/version-change analytics + app_start. Held back entirely
+// until the user has made a telemetry choice, so we never persist install state
+// (or send anything) pre-consent. The event sends inside are additionally gated
+// by the usage-analytics toggle; the version-detection + welcome prompt run once
+// consent is decided either way.
+function fireStartupTelemetry(mainWin: BrowserWindow): void {
+  if (!getSettingSync('telemetryConsentDecided')) {
+    log.info('[telemetry] startup events deferred — awaiting first-run consent')
+    return
+  }
+  checkAndReportUpdate(mainWin).catch((err) => log.warn('Update detection failed:', err))
+  trackAppStart()
+}
+
+// First-run telemetry consent from the renderer. Persists the choice, applies it
+// live (Sentry on/off without restart), and releases the previously-deferred
+// startup analytics.
+ipcMain.handle(TELEMETRY_SET_CONSENT, async (_e, choice: { crashReporting?: boolean; usageAnalytics?: boolean }) => {
+  const crashReporting = choice?.crashReporting === true
+  const usageAnalytics = choice?.usageAnalytics === true
+  await setSettingsFromMain({
+    telemetryConsentDecided: true,
+    crashReportingEnabled: crashReporting,
+    usageAnalyticsEnabled: usageAnalytics,
+  })
+  // initSentry now sees consent=true; it inits only if crash reporting was accepted.
+  initSentry()
+  const mainWin = BrowserWindow.getAllWindows().find(
+    (w) => !w.isDestroyed() && getWindowType(w.id) === 'main',
+  )
+  if (mainWin) fireStartupTelemetry(mainWin)
+})
 
 // Provide the menu module a way to spawn additional main windows without
 // importing this file (which would create a circular dependency).
@@ -1414,9 +1612,9 @@ app.whenReady().then(async () => {
     log.info('Deferred IPC handlers registered')
     initAutoUpdater()
     // Detect a version change since last launch and emit an app_updated event
-    // before app_start, so the upgrade path lands in analytics in order.
-    checkAndReportUpdate(mainWin).catch((err) => log.warn('Update detection failed:', err))
-    trackAppStart()
+    // before app_start, so the upgrade path lands in analytics in order. Held
+    // back on first run until the user accepts/declines telemetry consent.
+    fireStartupTelemetry(mainWin)
     if (process.env.CATE_SMOKE_TEST === '1') {
       runSmokeAssertions(mainWin)
         .then(() => app.exit(0))

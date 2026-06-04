@@ -131,6 +131,12 @@ export const ANALYTICS_FEEDBACK_ENGAGED = 'analytics:feedbackEngaged'
 export const ANALYTICS_FEEDBACK_GET_PENDING = 'analytics:feedbackGetPending'
 // Renderer -> main: track a promo link click (Product Hunt, GitHub, newsletter).
 export const ANALYTICS_LINK_CLICK = 'analytics:linkClick'
+// Renderer -> main: first-run telemetry consent decision.
+// Payload: { crashReporting: boolean, usageAnalytics: boolean }
+export const TELEMETRY_SET_CONSENT = 'telemetry:setConsent'
+// Renderer -> main: a feature was used (anonymous usage signal). Payload:
+// { feature: string, props?: Record<string, string|number|boolean> }
+export const ANALYTICS_TRACK_USAGE = 'analytics:trackUsage'
 
 // Open an external URL in the user's default browser (renderer -> main).
 export const OPEN_EXTERNAL_URL = 'open:externalUrl'

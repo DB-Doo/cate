@@ -1050,6 +1050,16 @@ export interface AppSettings {
   /** Send anonymous usage data (app starts, version upgrades, feedback) to the
    *  cero-analytics endpoint. No personal data, no file paths, no project info. */
   usageAnalyticsEnabled: boolean
+  /** Whether the user has made a first-run choice about telemetry. Until this is
+   *  true, NOTHING is sent (crash reporting and analytics are both held off),
+   *  regardless of the two flags above — they only describe the post-consent
+   *  state. The first-run consent dialog sets this to true once the user picks. */
+  telemetryConsentDecided: boolean
+
+  // Onboarding
+  /** Whether the user has finished (or skipped) the first-run guided tour.
+   *  Set false to replay it. */
+  onboardingCompleted: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -1073,7 +1083,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultPanelHeight: 400,
   zoomSpeed: 1.0,
   autoFocusLargestVisibleNode: false,
-  canvasGridStyle: 'dots',
+  canvasGridStyle: 'lines',
   snapToGrid: false,
   placementPicker: true,
 
@@ -1103,9 +1113,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notificationsEnabled: true,
   notifyOnlyWhenUnfocused: true,
 
-  // Privacy
+  // Privacy. The two flags describe the *post-consent* state; nothing is sent
+  // until telemetryConsentDecided flips true via the first-run consent dialog.
   crashReportingEnabled: true,
   usageAnalyticsEnabled: true,
+  telemetryConsentDecided: false,
+
+  // Onboarding
+  onboardingCompleted: false,
 }
 
 // -----------------------------------------------------------------------------
