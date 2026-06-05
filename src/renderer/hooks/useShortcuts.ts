@@ -10,6 +10,7 @@ import { useAppStore, getActiveCanvasOps } from '../stores/appStore'
 import { useUIStore } from '../stores/uiStore'
 import { useSearchStore } from '../stores/searchStore'
 import type { MenuActionId, ShortcutAction } from '../../shared/types'
+import { placementForActiveSurface } from '../lib/activeSurface'
 import { confirmDeleteRegion } from '../lib/confirmDeleteRegion'
 import { confirmClosePanels } from '../lib/confirmClosePanels'
 
@@ -92,19 +93,22 @@ export function useShortcuts(): void {
 
       switch (action as ShortcutAction) {
         case 'newTerminal': {
+          const placement = placementForActiveSurface()
           const wsId = await ensureWorkspaceFolder(selectedWorkspaceId)
-          if (wsId) appStore().createTerminal(wsId)
+          if (wsId) appStore().createTerminal(wsId, undefined, undefined, placement)
           break
         }
         case 'newBrowser': {
+          const placement = placementForActiveSurface()
           const wsId = await ensureWorkspaceFolder(selectedWorkspaceId)
-          if (wsId) appStore().createBrowser(wsId)
+          if (wsId) appStore().createBrowser(wsId, undefined, undefined, placement)
           break
         }
         case 'newEditor':
         case 'newFile': {
+          const placement = placementForActiveSurface()
           const wsId = await ensureWorkspaceFolder(selectedWorkspaceId)
-          if (wsId) appStore().createEditor(wsId)
+          if (wsId) appStore().createEditor(wsId, undefined, undefined, placement)
           break
         }
         case 'closePanel': {
@@ -233,6 +237,16 @@ export function useShortcuts(): void {
     // View / Terminal / etc. item that maps to a runnable action.
     const unsubscribeMenu = window.electronAPI.onMenuTriggerAction((action) => {
       runAction(action).catch(() => { /* noop — menu actions are best-effort */ })
+    })
+
+    // A panel-creation shortcut fired while a detached dock/panel window was
+    // focused is re-routed here (the main window owns the canvas). Make the
+    // originating workspace active so the new panel is visible, then create it.
+    const unsubscribeCreatePanel = window.electronAPI.onMenuCreatePanel(({ action, workspaceId }) => {
+      if (workspaceId && appStore().getWorkspace(workspaceId) && appStore().selectedWorkspaceId !== workspaceId) {
+        void appStore().selectWorkspace(workspaceId)
+      }
+      runAction(action).catch(() => { /* noop */ })
     })
 
     // Native "Layouts" menu → load a specific saved layout (replaces workspace).
@@ -506,6 +520,7 @@ export function useShortcuts(): void {
       document.removeEventListener('keyup', handleKeyUp, { capture: true })
       window.removeEventListener('blur', handleBlur)
       unsubscribeMenu()
+      unsubscribeCreatePanel()
       unsubscribeLoadLayout()
     }
   }, [canvasStoreApi])
