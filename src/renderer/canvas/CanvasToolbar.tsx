@@ -18,6 +18,7 @@ import {
 } from '@phosphor-icons/react'
 import { CateLogo } from '../ui/CateLogo'
 import Minimap from './Minimap'
+import WorktreeToolbarMenu from './WorktreeToolbarMenu'
 import { useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import { useUIStore } from '../stores/uiStore'
 import { useUIStateStore } from '../stores/uiStateStore'
@@ -33,6 +34,8 @@ const loadMinimapCorner = (): MinimapCorner => useUIStateStore.getState().minima
 
 interface CanvasToolbarProps {
   canvasPanelId: string
+  workspaceId: string
+  rootPath: string
   zoom: number
   onNewTerminal: () => void
   onNewBrowser: () => void
@@ -185,6 +188,8 @@ const ModeButton: React.FC<{
 
 const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   canvasPanelId,
+  workspaceId,
+  rootPath,
   zoom,
   onNewTerminal,
   onNewBrowser,
@@ -274,6 +279,14 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
             >
               <Hand size={18} />
             </ModeButton>
+
+            {/* Parallel worktrees — drop-up: focus a worktree's spatial lens,
+                open a terminal in one, or start a new parallel branch. */}
+            <WorktreeToolbarMenu
+              canvasPanelId={canvasPanelId}
+              workspaceId={workspaceId}
+              rootPath={rootPath}
+            />
 
             {/* Divider */}
             <div className="w-px h-5 bg-surface-5 mx-1" />

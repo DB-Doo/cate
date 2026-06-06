@@ -327,6 +327,8 @@ export default function CanvasPanel({ panelId, workspaceId, nodeId, renderPanelC
         {(nodeIds.length > 0 || workspaceRootPath) && (
           <CanvasToolbar
             canvasPanelId={panelId}
+            workspaceId={workspaceId}
+            rootPath={workspaceRootPath}
             zoom={zoomLevel}
             onNewTerminal={onNewTerminal}
             onNewBrowser={onNewBrowser}

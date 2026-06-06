@@ -1045,7 +1045,7 @@ export const FILE_EXCLUSIONS: string[] = [
 ]
 
 /** A sidebar view (left/right rail tabs). */
-export type SidebarView = 'workspaces' | 'explorer' | 'git' | 'parallelWork' | 'search'
+export type SidebarView = 'workspaces' | 'explorer' | 'git' | 'search'
 
 /** Which sidebar views live in the left vs. right rail. Persisted in settings. */
 export interface SidebarLayout {
@@ -1258,7 +1258,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // Layout — keep in sync with the sidebar's default arrangement.
   sidebarLayout: {
     left: ['workspaces', 'explorer', 'search'],
-    right: ['git', 'parallelWork'],
+    right: ['git'],
   },
 }
 
