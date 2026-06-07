@@ -28,6 +28,7 @@ import {
   Check,
   CircleNotch,
   CaretDown,
+  ArrowSquareOut,
 } from '@phosphor-icons/react'
 import { BACKDROP, CARD_SURFACE } from '../ui/Modal'
 import { useUIStore } from '../stores/uiStore'
@@ -48,6 +49,17 @@ function matches(entry: SkillEntry, terms: string[]): boolean {
   if (terms.length === 0) return true
   const hay = `${entry.name} ${entry.description}`.toLowerCase()
   return terms.every((t) => hay.includes(t))
+}
+
+// GitHub URL for a skill's source folder, or null for stubs with no source
+// (e.g. a locally installed skill we know nothing else about).
+function sourceUrl(entry: SkillEntry): string | null {
+  const { repo, ref, path } = entry.source
+  if (!repo) return null
+  const branch = ref || 'main'
+  return path
+    ? `https://github.com/${repo}/tree/${branch}/${path}`
+    : `https://github.com/${repo}/tree/${branch}`
 }
 
 function savedToEntry(s: SavedSkill): SkillEntry {
@@ -194,9 +206,13 @@ export function SkillsDialog() {
 
   const empty = installedRows.length === 0 && savedRows.length === 0 && browseRows.length === 0
 
+  // Key on id + path, not id alone: a repo can expose the same skill name at two
+  // paths, which collide to one id. Duplicate React keys break list diffing, so
+  // stale rows stay mounted when the query filters the list down — making search
+  // look like it ignores the query. id + path uniquely locates a SKILL.md.
   const renderRow = (entry: SkillEntry, installedRow: boolean) => (
     <SkillRow
-      key={entry.id}
+      key={`${entry.id}#${entry.source.path}`}
       entry={entry}
       installed={installedRow}
       saved={savedIds.has(entry.id)}
@@ -311,6 +327,7 @@ function SkillRow({
   const installRef = useRef<HTMLButtonElement>(null)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null)
   const [saveBusy, setSaveBusy] = useState(false)
+  const link = sourceUrl(entry)
 
   const openMenu = () => {
     const r = installRef.current?.getBoundingClientRect()
@@ -357,11 +374,6 @@ function SkillRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-[12.5px] font-mono text-primary truncate">{entry.name}</span>
-          {installed && (
-            <span className="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">
-              Installed
-            </span>
-          )}
           {typeof entry.stars === 'number' && entry.stars > 0 && (
             <span className="shrink-0 text-[10px] text-muted tabular-nums">
               {entry.stars > 999 ? `${Math.round(entry.stars / 1000)}k` : entry.stars}★
@@ -370,6 +382,16 @@ function SkillRow({
         </div>
         {entry.description && <div className="text-[11px] text-muted truncate">{entry.description}</div>}
       </div>
+
+      {link && (
+        <button
+          onClick={() => window.electronAPI?.openExternalUrl(link)}
+          title="Open skill on GitHub"
+          className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-muted hover:text-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        >
+          <ArrowSquareOut size={14} />
+        </button>
+      )}
 
       <button
         ref={installRef}
