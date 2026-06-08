@@ -12,12 +12,47 @@
 // =============================================================================
 
 import { useAppStore } from '../../stores/appStore'
+import { useStatusStore } from '../../stores/statusStore'
+import { selectAgentInfoByPanel } from '../../hooks/useAgentPanelInfo'
+import { terminalRegistry } from '../terminal/terminalRegistry'
 import { peekCanvasStoreForPanel, getAllCanvasStores } from '../../stores/canvasStore'
 import { getLiveNodeDockLayout } from '../../panels/nodeDockRegistry'
 import { buildColdStartCanvasChildOwners } from '../../sidebar/partitionWorkspacePanels'
 import type { WindowPanelReport } from '../../../shared/types'
 
 let cleanup: (() => void) | null = null
+
+/** Set of panelIds (this workspace) that the owner window's scan found listening
+ *  ports for. Ports are keyed by ptyId in the status store; translate via the
+ *  terminalRegistry so the report keys by panelId like everything else. */
+function panelsWithPorts(workspaceId: string): Set<string> {
+  const ws = useStatusStore.getState().workspaces[workspaceId]
+  const out = new Set<string>()
+  if (!ws) return out
+  for (const [ptyId, ports] of Object.entries(ws.listeningPorts)) {
+    if (!ports.length) continue
+    const pid = terminalRegistry.panelIdForPty(ptyId)
+    if (pid) out.add(pid)
+  }
+  return out
+}
+
+/** Cheap signature over just the report-relevant status slice (agent state/name
+ *  + which panels have ports), so a 1s activity poll that didn't change any of
+ *  those doesn't trigger a needless re-report (and a canvas-map rebuild). */
+function statusSignature(): string {
+  const parts: string[] = []
+  for (const [wsId, ws] of Object.entries(useStatusStore.getState().workspaces)) {
+    for (const [k, st] of Object.entries(ws.agentState)) {
+      const name = ws.agentPresent[k] ? ws.agentName[k] ?? '' : ''
+      parts.push(`${wsId}:${k}:${st}:${name}`)
+    }
+    for (const [k, ports] of Object.entries(ws.listeningPorts)) {
+      if (ports.length) parts.push(`${wsId}:p:${k}`)
+    }
+  }
+  return parts.sort().join('|')
+}
 
 /** Build the panel id → parent canvas panel id map for one workspace by walking
  *  each mounted canvas store's nodes. Reuses the same pure ownership logic
@@ -54,8 +89,16 @@ export function setupWindowPanelSync(): () => void {
 
   const send = (): void => {
     const report: WindowPanelReport[] = []
+    const status = useStatusStore.getState()
     for (const ws of useAppStore.getState().workspaces) {
       const childToCanvas = canvasChildMap(ws.panels)
+      // Agent state/name + ports are stamped HERE (by the owner window) because
+      // the activity scan is only delivered to a panel's owner — other windows
+      // never see it. Riding it on the union is the only way the overview's
+      // "Other windows" rows can show the same shimmer/await/port dot as local
+      // rows.
+      const agentInfo = selectAgentInfoByPanel(status, ws.id)
+      const withPorts = panelsWithPorts(ws.id)
       for (const p of Object.values(ws.panels)) {
         report.push({
           panelId: p.id,
@@ -63,6 +106,10 @@ export function setupWindowPanelSync(): () => void {
           title: p.title,
           workspaceId: ws.id,
           parentCanvasId: childToCanvas.get(p.id),
+          worktreeId: p.worktreeId,
+          agentState: agentInfo[p.id]?.state,
+          agentName: agentInfo[p.id]?.name ?? null,
+          hasPorts: withPorts.has(p.id),
         })
       }
     }
@@ -102,8 +149,21 @@ export function setupWindowPanelSync(): () => void {
   })
   syncCanvasSubscriptions()
 
+  // Re-report when agent state / ports change so detached rows track the owner's
+  // live activity. Gated on a signature of just that slice: the status store also
+  // churns on every 1s activity poll (terminalActivity/cwd) that the report
+  // ignores, and an ungated subscription would rebuild the canvas map each tick.
+  let lastStatusSig = statusSignature()
+  const unsubscribeStatus = useStatusStore.subscribe(() => {
+    const sig = statusSignature()
+    if (sig === lastStatusSig) return
+    lastStatusSig = sig
+    schedule()
+  })
+
   cleanup = () => {
     unsubscribeApp()
+    unsubscribeStatus()
     for (const unsub of canvasSubs.values()) unsub()
     canvasSubs.clear()
     if (timer) clearTimeout(timer)

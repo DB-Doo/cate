@@ -270,6 +270,21 @@ export interface WindowPanelInfo {
   ownerWindowType: CateWindowType
   /** Set when this panel lives inside a canvas panel in its window. */
   parentCanvasId?: string
+  /** The panel's worktree tag (if any), so the overview can tint a detached
+   *  panel's row title with its worktree accent — resolved against the (same)
+   *  workspace's worktree registry, which the listing window already holds. */
+  worktreeId?: string
+  /** Live agent state for a terminal/agent panel, stamped by the OWNER window
+   *  (the only window that receives this panel's activity scans). Carried so the
+   *  overview can render a detached row's running shimmer / awaiting indicator
+   *  exactly like a local row. */
+  agentState?: AgentState
+  /** Agent display name (gated on the agent still being present), so the owner's
+   *  agent logo can be resolved for the detached row's icon. */
+  agentName?: string | null
+  /** Whether the owner window's scan found listening ports for this panel, so a
+   *  detached row shows the same port dot as a local one. */
+  hasPorts?: boolean
 }
 
 /** A single window's report of its panels for cross-window discovery, sent on
@@ -282,6 +297,10 @@ export interface WindowPanelReport {
   title: string
   workspaceId: string
   parentCanvasId?: string
+  worktreeId?: string
+  agentState?: AgentState
+  agentName?: string | null
+  hasPorts?: boolean
 }
 
 export interface CateWindowParams {

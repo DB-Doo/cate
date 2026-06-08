@@ -16,6 +16,7 @@ import { worktreeTitleStyle } from '../lib/worktreeTitleStyle'
 import { isMiddleClick } from '../lib/mouse'
 import { PANEL_REGISTRY } from '../panels/registry'
 import { useAgentInfoByPanel } from '../hooks/useAgentPanelInfo'
+import { getAgentLogo } from '../lib/agent/agentLogos'
 import { workspaceDisplayName } from '../lib/fs/displayPath'
 import { workspaceRuntime } from '../lib/workspace/workspaceRuntime'
 import { InlineEditInput } from './InlineEditInput'
@@ -88,11 +89,14 @@ export interface TerminalPanelRowProps {
   /** Middle-click closes the row (mirrors the dock tab behavior). */
   onClose?: () => void
   rename?: PanelRenameProps
+  /** Overrides the row's hover tooltip (used by detached rows to note the panel
+   *  lives in another window). Falls back to the panel's path / url / label. */
+  titleHint?: string
 }
 
 const AWAIT_COLOR = '#c08a5a'
 
-export const TerminalPanelRow: React.FC<TerminalPanelRowProps> = ({ panel, indent, agentState, agentLogo: agentLogoProp, hasPorts, worktreeColor, onClick, onClose, rename }) => {
+export const TerminalPanelRow: React.FC<TerminalPanelRowProps> = ({ panel, indent, agentState, agentLogo: agentLogoProp, hasPorts, worktreeColor, onClick, onClose, rename, titleHint }) => {
   const Icon = PANEL_ICONS[panel.type] ?? TerminalIcon
   const label = panel.title || panel.filePath?.split('/').pop() || panel.url || panel.type
 
@@ -116,7 +120,7 @@ export const TerminalPanelRow: React.FC<TerminalPanelRowProps> = ({ panel, inden
           onClose()
         }
       }}
-      title={panel.filePath || panel.url || label}
+      title={titleHint ?? (panel.filePath || panel.url || label)}
     >
       {agentLogo ? (
         <img
@@ -470,18 +474,44 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   // worktrees (matches WorktreePill's visibility rule — single-branch
   // workspaces would just get noisy with monochrome dots).
   const showWorktreeAccent = worktrees.length >= 2
-  const worktreeColorFor = (panelId: string): string | undefined => {
+  // Resolve a worktree accent color from a panel's worktree tag. isPrimary is no
+  // longer persisted (it's a live-git fact); the primary worktree is the record
+  // keyed by the workspace's own rootPath.
+  const worktreeColorForId = (worktreeId: string | undefined): string | undefined => {
     if (!showWorktreeAccent) return undefined
-    const wtId = panels[panelId]?.worktreeId
-    // isPrimary is no longer persisted (it's a live-git fact); the primary
-    // worktree is the record keyed by the workspace's own rootPath.
-    const wt = worktrees.find((w) => w.id === wtId) ?? worktrees.find((w) => w.path === workspace.rootPath)
+    const wt = worktrees.find((w) => w.id === worktreeId) ?? worktrees.find((w) => w.path === workspace.rootPath)
     return wt?.color
   }
+  const worktreeColorFor = (panelId: string): string | undefined =>
+    worktreeColorForId(panels[panelId]?.worktreeId)
 
   // A panel living in another window — click focuses that window and reveals it.
-  // Read-only (no rename/close/ports), since it isn't hosted here.
+  // Read-only (no rename/close), since it isn't hosted here, but otherwise
+  // rendered with the SAME data as a local row: agent state, agent logo, ports,
+  // and worktree accent all ride along on the cross-window union (stamped by the
+  // owner window, the only one that sees this panel's activity scan), so the
+  // running shimmer / awaiting indicator / port dot match the local rows exactly.
   const renderDetachedRow = (p: WindowPanelInfo, indent: boolean) => {
+    const onClick = (e: React.MouseEvent): void => {
+      e.stopPropagation()
+      void window.electronAPI.focusWindowPanel(p.panelId)
+    }
+    const titleHint = `${p.title} — in another window`
+    if (p.type === 'terminal' || p.type === 'agent') {
+      return (
+        <TerminalPanelRow
+          key={p.panelId}
+          panel={{ id: p.panelId, type: p.type, title: p.title }}
+          indent={indent}
+          agentState={p.agentState}
+          agentLogo={getAgentLogo(p.agentName ?? null)}
+          hasPorts={!!p.hasPorts}
+          worktreeColor={worktreeColorForId(p.worktreeId)}
+          onClick={onClick}
+          titleHint={titleHint}
+        />
+      )
+    }
     const Icon = PANEL_ICONS[p.type] ?? SquaresFour
     return (
       <button
@@ -489,11 +519,14 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
         className={`group/panel flex items-center gap-1.5 h-7 pr-2 text-[13px] text-muted hover:text-primary hover:bg-hover text-left min-w-0 focus:outline-none ${
           indent ? 'pl-10' : 'pl-7'
         }`}
-        onClick={(e) => { e.stopPropagation(); void window.electronAPI.focusWindowPanel(p.panelId) }}
-        title={`${p.title} — in another window`}
+        onClick={onClick}
+        title={titleHint}
       >
         <Icon size={11} className="flex-shrink-0 opacity-60" />
         <span className="truncate min-w-0 flex-1">{p.title}</span>
+        {p.hasPorts && (
+          <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-muted opacity-50" />
+        )}
       </button>
     )
   }

@@ -41,6 +41,10 @@ export function setWindowPanels(windowId: number, report: WindowPanelReport[]): 
       ownerWindowId: windowId,
       ownerWindowType,
       parentCanvasId: p.parentCanvasId,
+      worktreeId: p.worktreeId,
+      agentState: p.agentState,
+      agentName: p.agentName,
+      hasPorts: p.hasPorts,
     })),
   )
   broadcastWindowPanels()
@@ -72,7 +76,7 @@ let lastWindowPanelSignature = ''
 export function broadcastWindowPanels(): void {
   const panels = getWindowPanels()
   const signature = panels
-    .map((p) => `${p.ownerWindowId}:${p.panelId}:${p.type}:${p.title}:${p.workspaceId}:${p.parentCanvasId ?? ''}`)
+    .map((p) => `${p.ownerWindowId}:${p.panelId}:${p.type}:${p.title}:${p.workspaceId}:${p.parentCanvasId ?? ''}:${p.worktreeId ?? ''}:${p.agentState ?? ''}:${p.agentName ?? ''}:${p.hasPorts ? 1 : 0}`)
     .sort()
     .join('|')
   if (signature === lastWindowPanelSignature) return

@@ -129,6 +129,28 @@ describe('cross-window panel discovery (main)', () => {
     expect(byId.top.parentCanvasId).toBeUndefined()
   })
 
+  it('passes through the panel worktreeId so the overview can tint detached rows', () => {
+    open(141, 'dock', 'ws-A')
+    setWindowPanels(141, [
+      { panelId: 'wt1', type: 'terminal', title: 'feature shell', workspaceId: 'ws-A', worktreeId: 'wt-feature' },
+      { panelId: 'plain', type: 'terminal', title: 'plain shell', workspaceId: 'ws-A' },
+    ])
+    const byId = Object.fromEntries(getWindowPanels().map((p) => [p.panelId, p]))
+    expect(byId.wt1.worktreeId).toBe('wt-feature')
+    expect(byId.plain.worktreeId).toBeUndefined()
+  })
+
+  it('rebroadcasts when only a panel\'s worktreeId changes (re-tag)', () => {
+    const main = open(1, 'main', 'ws-A')
+    open(150, 'dock', 'ws-A')
+    setWindowPanels(150, [{ panelId: 't', type: 'terminal', title: 'shell', workspaceId: 'ws-A', worktreeId: 'wt-a' }])
+    const before = broadcastsTo(main).length
+    setWindowPanels(150, [{ panelId: 't', type: 'terminal', title: 'shell', workspaceId: 'ws-A', worktreeId: 'wt-b' }])
+    expect(broadcastsTo(main).length).toBeGreaterThan(before)
+    const last = broadcastsTo(main).at(-1)!
+    expect(last.find((p) => p.panelId === 't')?.worktreeId).toBe('wt-b')
+  })
+
   it('ignores a report from an untracked (unregistered) window', () => {
     setWindowPanels(999, [report('x', 'terminal', 'X')])
     expect(getWindowPanels()).toHaveLength(0)

@@ -30,6 +30,7 @@ import {
 import { isExternalFileDrag } from '../fs/importExternalEntries'
 import { revealPanel } from '../workspace/panelReveal'
 import { setupWindowPanelSync } from '../workspace/windowPanelSync'
+import { useOwnedTerminalTelemetry } from '../../hooks/useProcessMonitor'
 import type { AgentState } from '../../../shared/types'
 
 export function useWindowRuntime(): void {
@@ -47,6 +48,13 @@ export function useWindowRuntime(): void {
   // its canvas/active-panel resolution is per-window, so it acts on the in-window
   // canvas and panels.
   useShortcuts()
+
+  // Owner-routed terminal telemetry (agent presence/name, ports, cwd). Main
+  // sends these only to each terminal's owning window, so every window must
+  // listen for its OWN terminals — otherwise a detached terminal never learns
+  // its agent presence and the detector can't flip it to `running` (the screen
+  // spinner alone isn't enough; resolveAgentState gates running on presence).
+  useOwnedTerminalTelemetry()
 
   // Agent-screen detector: scans this window's terminals for prompt markers and
   // reports "needs input"/running state via IPC. The unsubscribe also applies

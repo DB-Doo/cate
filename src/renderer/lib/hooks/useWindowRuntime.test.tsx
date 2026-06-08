@@ -28,6 +28,7 @@ const h = vi.hoisted(() => ({
   openSettings: vi.fn(),
   closeSettings: vi.fn(),
   settingsOpen: false,
+  useOwnedTerminalTelemetry: vi.fn(),
 }))
 vi.mock('../../hooks/useShortcuts', () => ({ useShortcuts: h.useShortcuts }))
 vi.mock('./useThemeAndScaleHydration', () => ({ useThemeAndScaleHydration: h.useThemeAndScaleHydration }))
@@ -37,7 +38,10 @@ vi.mock('../agent/agentScreenDetector', () => ({
   applyRemoteAgentScreenState: vi.fn(),
 }))
 vi.mock('../workspace/panelReveal', () => ({ revealPanel: h.revealPanel }))
-vi.mock('../../stores/settingsStore', () => ({ useSettingsStore: { getState: () => ({ loadSettings: h.loadSettings }) } }))
+vi.mock('../../hooks/useProcessMonitor', () => ({ useOwnedTerminalTelemetry: h.useOwnedTerminalTelemetry }))
+vi.mock('../../stores/settingsStore', () => ({
+  useSettingsStore: { getState: () => ({ loadSettings: h.loadSettings }), subscribe: () => () => {} },
+}))
 vi.mock('../../stores/uiStateStore', () => ({ useUIStateStore: { getState: () => ({ loadUIState: h.loadUIState }) } }))
 vi.mock('../../stores/uiStore', () => ({
   useUIStore: { getState: () => ({ showSettings: h.settingsOpen, openSettings: h.openSettings, closeSettings: h.closeSettings }) },
@@ -96,6 +100,9 @@ describe('useWindowRuntime', () => {
     expect(h.loadSettings).toHaveBeenCalled()
     expect(h.loadUIState).toHaveBeenCalled()
     expect(h.startAgentScreenDetector).toHaveBeenCalled()
+    // Owner-routed terminal telemetry must be wired in EVERY window so detached
+    // terminals learn their agent presence (and can flip to `running`).
+    expect(h.useOwnedTerminalTelemetry).toHaveBeenCalled()
     expect(window.electronAPI.onAgentScreenStateUpdate).toHaveBeenCalled()
     // Subscribes to the cross-window panel union so this window can discover
     // panels in other windows.

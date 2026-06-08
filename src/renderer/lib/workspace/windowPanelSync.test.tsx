@@ -23,6 +23,7 @@ beforeEach(() => {
 })
 
 import { useAppStore } from '../../stores/appStore'
+import { useStatusStore } from '../../stores/statusStore'
 import { getOrCreateCanvasStoreForPanel, releaseCanvasStoreForPanel } from '../../stores/canvasStore'
 import { createDockStore } from '../../stores/dockStore'
 import { registerWorkspaceDockStore, releaseWorkspaceDockStore } from './dockRegistry'
@@ -30,8 +31,8 @@ import { registerNodeDockStore, unregisterNodeDockStore } from '../../panels/nod
 import { setupWindowPanelSync } from './windowPanelSync'
 import type { WindowPanelReport, PanelState } from '../../../shared/types'
 
-function panel(id: string, type: PanelState['type']): PanelState {
-  return { id, type, title: id } as PanelState
+function panel(id: string, type: PanelState['type'], worktreeId?: string): PanelState {
+  return { id, type, title: id, worktreeId } as PanelState
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 50))
@@ -73,6 +74,71 @@ describe('windowPanelSync — canvas child parentCanvasId', () => {
     stop()
     unregisterNodeDockStore('cv', 'n2')
     releaseCanvasStoreForPanel('cv')
+  })
+
+  it('carries each panel\'s worktreeId so the overview can tint detached rows', async () => {
+    const reports: WindowPanelReport[][] = []
+    ;(window as any).electronAPI = {
+      reportWindowPanels: vi.fn(async (r: WindowPanelReport[]) => { reports.push(r) }),
+    }
+
+    const ws = 'ws-wt'
+    useAppStore.setState({
+      workspaces: [{
+        id: ws, name: 'W', color: '', rootPath: '/x', rootPathError: null,
+        isRootPathPending: false, worktrees: [],
+        panels: { t1: panel('t1', 'terminal', 'wt-feature'), t2: panel('t2', 'terminal') },
+      } as any],
+      selectedWorkspaceId: ws,
+    } as any)
+
+    const stop = setupWindowPanelSync()
+    await tick()
+
+    const byId = Object.fromEntries(reports[reports.length - 1].filter((r) => r.workspaceId === ws).map((r) => [r.panelId, r]))
+    expect(byId.t1?.worktreeId).toBe('wt-feature')
+    expect(byId.t2?.worktreeId).toBeUndefined()
+
+    stop()
+  })
+
+  it('carries live agent state + name, and re-reports when it changes (no appStore change)', async () => {
+    const reports: WindowPanelReport[][] = []
+    ;(window as any).electronAPI = {
+      reportWindowPanels: vi.fn(async (r: WindowPanelReport[]) => { reports.push(r) }),
+    }
+
+    const ws = 'ws-agent'
+    useAppStore.setState({
+      workspaces: [{
+        id: ws, name: 'W', color: '', rootPath: '/x', rootPathError: null,
+        isRootPathPending: false, worktrees: [],
+        panels: { a1: panel('a1', 'agent'), t2: panel('t2', 'terminal') },
+      } as any],
+      selectedWorkspaceId: ws,
+    } as any)
+    const status = useStatusStore.getState()
+    status.setAgentState(ws, 'a1', 'running', 'Claude Code')
+    status.setAgentPresent(ws, 'a1', true)
+
+    const stop = setupWindowPanelSync()
+    await tick()
+
+    let byId = Object.fromEntries(reports[reports.length - 1].filter((r) => r.workspaceId === ws).map((r) => [r.panelId, r]))
+    expect(byId.a1?.agentState).toBe('running')
+    expect(byId.a1?.agentName).toBe('Claude Code')
+    expect(byId.t2?.agentState).toBeUndefined()
+
+    // A status-only change (agent goes from running → awaiting) must re-fire the
+    // report even though ws.panels is untouched.
+    reports.length = 0
+    useStatusStore.getState().setAgentState(ws, 'a1', 'waitingForInput', 'Claude Code')
+    await new Promise((r) => setTimeout(r, 300)) // past the 200ms report debounce
+    expect(reports.length).toBeGreaterThan(0)
+    byId = Object.fromEntries(reports[reports.length - 1].filter((r) => r.workspaceId === ws).map((r) => [r.panelId, r]))
+    expect(byId.a1?.agentState).toBe('waitingForInput')
+
+    stop()
   })
 
   it('re-reports when a panel is moved ONTO the canvas (canvas/dock change, no appStore change)', async () => {
