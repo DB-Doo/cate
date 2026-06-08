@@ -7,16 +7,13 @@ import React, { useEffect, useState, useCallback, Suspense } from 'react'
 import { X } from '@phosphor-icons/react'
 import type { PanelState, PanelTransferSnapshot } from '../../shared/types'
 import { terminalRegistry } from '../lib/terminal/terminalRegistry'
-import { DragOverlay, setupCrossWindowDragListeners, useDragOp } from '../drag'
+import { captureAndSaveScrollback } from '../lib/terminal/captureAndSaveScrollback'
+import { setupCrossWindowDragListeners, useDragOp } from '../drag'
 import { renderPanelComponent, getPanelDef } from '../panels/registry'
 import { createTransferSnapshot, hydrateReceivedPanel } from '../lib/panelTransfer'
-import { useSettingsStore } from '../stores/settingsStore'
-import { useUIStateStore } from '../stores/uiStateStore'
-import { useUIStore } from '../stores/uiStore'
-import { SettingsWindow } from '../settings/SettingsWindow'
 import WindowControls from './WindowControls'
-import { applyTheme } from '../lib/themeManager'
-import { applyUiScale } from '../lib/uiScale'
+import { useWindowRuntime } from '../lib/hooks/useWindowRuntime'
+import WindowChrome from './WindowChrome'
 import { ensurePanelsInAppStore } from '../lib/canvas/applyCanvasChildPanels'
 import { useAppStore } from '../stores/appStore'
 
@@ -53,30 +50,17 @@ export default function PanelWindowShell({ panelType, panelId, workspaceId }: Pa
       : null,
   )
 
-  // Hydrate settings + apply theme so this window mirrors the main app's
-  // appearance and settings (theme, minimap, canvas grid, etc.).
-  useEffect(() => {
-    useSettingsStore.getState().loadSettings()
-    useUIStateStore.getState().loadUIState()
-  }, [])
-  const activeThemeId = useSettingsStore((s) => s.activeThemeId)
-  const customThemes = useSettingsStore((s) => s.customThemes)
-  const systemLightThemeId = useSettingsStore((s) => s.systemLightThemeId)
-  const systemDarkThemeId = useSettingsStore((s) => s.systemDarkThemeId)
-  useEffect(() => {
-    applyTheme(activeThemeId)
-  }, [activeThemeId, customThemes, systemLightThemeId, systemDarkThemeId])
-  const uiScale = useSettingsStore((s) => s.uiScale)
-  useEffect(() => {
-    applyUiScale(uiScale)
-  }, [uiScale])
+  // Shared window runtime — settings/theme, keyboard shortcuts, command palette,
+  // agent-screen detector, Cmd+, settings, and the external-drop guard. Gives
+  // this detached window the same baseline functionality as the main window.
+  useWindowRuntime()
 
   // Listen for incoming panel transfers from the main process
   useEffect(() => {
     const cleanup = window.electronAPI.onPanelReceive((snapshot: PanelTransferSnapshot) => {
       // Deposit PTY hand-off + hydrate canvas children BEFORE the panel mounts.
       hydrateReceivedPanel(wsId, snapshot)
-      ensurePanelsInAppStore(wsId, { [snapshot.panel.id]: snapshot.panel }, snapshot.rootPath)
+      ensurePanelsInAppStore(wsId, { [snapshot.panel.id]: snapshot.panel }, snapshot.rootPath, snapshot.worktrees)
       setLivePanelId(snapshot.panel.id)
       setReceivedSnapshot(snapshot)
     })
@@ -121,12 +105,7 @@ export default function PanelWindowShell({ panelType, panelId, workspaceId }: Pa
         reportedPtyId = entry.ptyId
         window.electronAPI.panelWindowSyncPty(entry.ptyId).catch(() => {})
       }
-      // Exclude the cursor row: scrollback is replayed into a fresh PTY on the
-      // next launch, which re-sends the prompt line.
-      const content = terminalRegistry.captureScrollback(entry, { excludeCursorRow: true })
-      if (content) {
-        window.electronAPI.terminalScrollbackSave(entry.ptyId, content).catch(() => {})
-      }
+      captureAndSaveScrollback(entry, entry.ptyId)
     }
 
     // Wait for the terminal to be created before the first capture
@@ -151,13 +130,6 @@ export default function PanelWindowShell({ panelType, panelId, workspaceId }: Pa
   // (removeDetachedPanelRecords) targets THIS window's stub workspace, not the
   // empty '' selection a panel window's appStore would otherwise report.
   const { handleDragStart } = useDragOp({ workspaceId: wsId })
-
-  // A detached AgentPanel routes provider sign-in to the main Cate Settings
-  // (Providers). Render the settings window here too so that button works in
-  // this window rather than being a no-op.
-  const showSettings = useUIStore((s) => s.showSettings)
-  const settingsInitialTab = useUIStore((s) => s.settingsInitialTab)
-  const closeSettings = useUIStore((s) => s.closeSettings)
 
   // If we have panel info from query params but no transfer yet, show a loading state
   const displayPanel = panel
@@ -187,6 +159,7 @@ export default function PanelWindowShell({ panelType, panelId, workspaceId }: Pa
       {
         resolveChildPanel: (childId) => sourceWs?.panels[childId],
         workspaceRootPath: sourceWs?.rootPath || undefined,
+        worktrees: sourceWs?.worktrees,
       },
     )
     window.electronAPI.panelWindowDockBack(snapshot)
@@ -257,8 +230,6 @@ export default function PanelWindowShell({ panelType, panelId, workspaceId }: Pa
         )}
       </div>
 
-      <DragOverlay />
-
       {/* Panel content */}
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <Suspense fallback={<div className="w-full h-full bg-surface-4 flex items-center justify-center text-muted text-sm">Loading...</div>}>
@@ -266,7 +237,7 @@ export default function PanelWindowShell({ panelType, panelId, workspaceId }: Pa
         </Suspense>
       </div>
 
-      <SettingsWindow isOpen={showSettings} onClose={closeSettings} initialTab={settingsInitialTab ?? undefined} />
+      <WindowChrome />
     </div>
   )
 }

@@ -55,7 +55,8 @@ export function useProcessMonitor(workspaceId: string): void {
         // for agent terminals — the raw OSC title (cwd / spinner-prefixed name
         // / session label) is suppressed for agents in terminalRegistry's
         // onTitleChange (see applyOscTitleIfNoAgent), so this name sticks.
-        // `updatePanelTitleFromAgent` skips when the user has manually renamed.
+        // Duplicates are numbered ("Claude Code 2") by updatePanelTitleFromAgent.
+        // It also skips the update when the user has manually renamed the tab.
         if (agentName && agentName !== prevAgent) {
           const panelId = terminalRegistry.panelIdForPty(terminalId) ?? terminalId
           useAppStore.getState().updatePanelTitleFromAgent(actualWorkspaceId, panelId, agentName)

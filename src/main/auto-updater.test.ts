@@ -50,6 +50,8 @@ const h = vi.hoisted(() => {
     },
     dialog: { showMessageBox: vi.fn(() => Promise.resolve({ response: 1 })), showMessageBoxSync: vi.fn(() => 1) },
     shell: { openExternal: vi.fn(() => Promise.resolve()) },
+    ipcMain: { handle: vi.fn(), on: vi.fn(), removeHandler: vi.fn() },
+    broadcastToAll: vi.fn(),
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     sendEvent: vi.fn((_name: string, _props?: Record<string, unknown>) => Promise.resolve(true)),
     getSettingSync: vi.fn(() => false),
@@ -58,7 +60,8 @@ const h = vi.hoisted(() => {
 })
 
 vi.mock('electron-updater', () => ({ autoUpdater: h.autoUpdater }))
-vi.mock('electron', () => ({ app: h.app, dialog: h.dialog, shell: h.shell }))
+vi.mock('electron', () => ({ app: h.app, dialog: h.dialog, shell: h.shell, ipcMain: h.ipcMain }))
+vi.mock('./windowRegistry', () => ({ broadcastToAll: h.broadcastToAll }))
 vi.mock('./logger', () => ({ default: h.log }))
 vi.mock('./store', () => ({ getSettingSync: h.getSettingSync }))
 vi.mock('./updateInstaller', () => ({ canSelfUpdate: h.canSelfUpdate }))

@@ -18,16 +18,17 @@ const PANEL_CREATE_ACTIONS = new Set<MenuActionId>(['newTerminal', 'newEditor', 
  *  listens for MENU_TRIGGER_ACTION and runs the matching action through the
  *  same code path as the keyboard shortcut.
  *
- *  Exception: a panel-creation action fired while a detached dock/panel window
- *  is focused has nowhere to put the new panel. Route it to the workspace's
- *  main window (which owns the canvas) and bring that window forward so the new
- *  panel is visible. Without this, New Terminal/Editor/Browser silently do
- *  nothing whenever focus is outside a main window. */
+ *  Exception: a panel-creation action fired while a detached PANEL window is
+ *  focused has nowhere to put the new panel (a panel window hosts a single panel
+ *  with no dock or canvas). Route it to the workspace's main window (which owns
+ *  the canvas) and bring that window forward. Dock windows DO have a container,
+ *  so they receive MENU_TRIGGER_ACTION and place the panel locally via the same
+ *  renderer placement path as the keyboard shortcut. */
 function dispatch(action: MenuActionId): () => void {
   return (): void => {
     const win = BrowserWindow.getFocusedWindow()
     if (!win) return
-    if (PANEL_CREATE_ACTIONS.has(action) && getWindowType(win.id) !== 'main') {
+    if (PANEL_CREATE_ACTIONS.has(action) && getWindowType(win.id) === 'panel') {
       const mainWin = getActiveMainWindow()
       if (mainWin) {
         mainWin.webContents.send(MENU_CREATE_PANEL, { action, workspaceId: getWindowWorkspaceId(win.id) })
@@ -229,8 +230,6 @@ export function buildApplicationMenu(): void {
     {
       label: 'Go',
       submenu: [
-        { label: 'Node Switcher', accelerator: 'Ctrl+Space', click: dispatch('nodeSwitcher') },
-        { type: 'separator' },
         { label: 'Next Panel', accelerator: 'Ctrl+Tab', click: dispatch('focusNext') },
         { label: 'Previous Panel', accelerator: 'Ctrl+Shift+Tab', click: dispatch('focusPrevious') },
       ],

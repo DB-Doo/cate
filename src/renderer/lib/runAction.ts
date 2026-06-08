@@ -139,9 +139,6 @@ export async function runAction(
     case 'toggleMinimap':
       useUIStore.getState().toggleMinimapOpen()
       break
-    case 'nodeSwitcher':
-      useUIStore.getState().setShowNodeSwitcher(true)
-      break
     case 'commandPalette':
       useUIStore.getState().setShowCommandPalette(true)
       break
@@ -173,12 +170,11 @@ export async function runAction(
     case 'zoomToSelection':
       canvasStore().zoomToSelection()
       break
-    case 'toolSelect':
-      useUIStore.getState().setActiveTool('select')
+    case 'toggleTool': {
+      const ui = useUIStore.getState()
+      ui.setActiveTool(ui.activeTool === 'hand' ? 'select' : 'hand')
       break
-    case 'toolHand':
-      useUIStore.getState().setActiveTool('hand')
-      break
+    }
     case 'navigateUp':
       canvasStore().navigateSelect('up')
       break

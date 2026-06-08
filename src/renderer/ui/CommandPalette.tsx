@@ -7,7 +7,7 @@
 // palette reaches panels and files too, not just commands.
 // =============================================================================
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Terminal,
   Globe,
@@ -35,8 +35,10 @@ import { CateLogo } from './CateLogo'
 import { BACKDROP, CARD_SURFACE } from './Modal'
 import { useUIStore } from '../stores/uiStore'
 import { useAppStore } from '../stores/appStore'
+import { useOtherWindowPanels } from '../stores/windowPanelStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useCanvasStoreApi } from '../stores/CanvasStoreContext'
+import { WindowTypeContext } from '../stores/WindowTypeContext'
 import { runAction } from '../lib/runAction'
 import { useWorkspacePanelTree } from '../lib/workspace/useWorkspacePanelTree'
 import { revealPanel } from '../lib/workspace/panelReveal'
@@ -93,6 +95,9 @@ interface PanelResult {
   title: string
   type: PanelType
   secondary: string
+  /** Set when the panel lives in another window — activating it focuses that
+   *  window instead of revealing locally. */
+  inOtherWindow?: boolean
 }
 
 // A single navigable entry in the flat list, used for keyboard selection.
@@ -113,6 +118,8 @@ export const CommandPalette: React.FC = () => {
   const setShowCommandPalette = useUIStore((s) => s.setShowCommandPalette)
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId)
   const canvasApi = useCanvasStoreApi()
+  // Detached windows have no sidebar, so sidebar toggles are hidden there.
+  const isMainWindow = useContext(WindowTypeContext) === 'main'
 
   // The reinstall command is only meaningful for a remote (ssh/wsl) workspace.
   const isRemoteWorkspace = useAppStore((s) => {
@@ -154,11 +161,15 @@ export const CommandPalette: React.FC = () => {
       { id: 'newCanvas', title: 'New Canvas', icon: <LayoutIcon />, action: run('newCanvas') },
       { id: 'closePanel', title: 'Close Panel', icon: <CloseIcon />, action: run('closePanel') },
       { id: 'saveFile', title: 'Save File', icon: <SaveIcon />, action: run('saveFile') },
-      { id: 'toggleSidebar', title: 'Toggle Sidebar', icon: <SidebarIcon />, action: run('toggleSidebar') },
-      { id: 'toggleFileExplorer', title: 'Toggle File Explorer', icon: <FolderOpenIcon />, action: run('toggleFileExplorer') },
-      { id: 'toggleSearch', title: 'Toggle Search', icon: <SearchIcon />, action: run('toggleSearch') },
+      // Sidebar toggles only exist in the main window; hidden in detached windows.
+      ...(isMainWindow
+        ? [
+            { id: 'toggleSidebar', title: 'Toggle Sidebar', icon: <SidebarIcon />, action: run('toggleSidebar') },
+            { id: 'toggleFileExplorer', title: 'Toggle File Explorer', icon: <FolderOpenIcon />, action: run('toggleFileExplorer') },
+            { id: 'toggleSearch', title: 'Toggle Search', icon: <SearchIcon />, action: run('toggleSearch') },
+          ]
+        : []),
       { id: 'toggleMinimap', title: 'Toggle Minimap', icon: <MinimapIcon />, action: run('toggleMinimap') },
-      { id: 'nodeSwitcher', title: 'Switch Panel', icon: <LayersIcon />, action: run('nodeSwitcher') },
       { id: 'zoomReset', title: 'Reset Zoom', icon: <ZoomResetIcon />, action: run('zoomReset') },
       { id: 'zoomToFit', title: 'Zoom to Fit', icon: <ZoomToFitIcon />, action: run('zoomToFit') },
       { id: 'zoomToSelection', title: 'Zoom to Selection', icon: <ZoomSelectionIcon />, action: run('zoomToSelection') },
@@ -195,7 +206,7 @@ export const CommandPalette: React.FC = () => {
           }]
         : []),
     ],
-    [run, isRemoteWorkspace, deleteCompanion, selectedWorkspaceId],
+    [run, isMainWindow, isRemoteWorkspace, deleteCompanion, selectedWorkspaceId],
   )
 
   // Open panels in the current workspace.
@@ -205,6 +216,10 @@ export const CommandPalette: React.FC = () => {
   // (placed nowhere) and panels detached into other windows don't, and the order
   // mirrors the overview's tree.
   const { panels, orderedPanels } = useWorkspacePanelTree(selectedWorkspaceId)
+
+  // Panels that live in OTHER windows for this workspace (bidirectional: the main
+  // window sees detached panels, and a detached window sees the main window's).
+  const otherWindowPanels = useOtherWindowPanels(selectedWorkspaceId, Object.keys(panels))
 
   const rootPath = useAppStore((s) => s.workspaces.find((w) => w.id === s.selectedWorkspaceId)?.rootPath)
 
@@ -216,7 +231,8 @@ export const CommandPalette: React.FC = () => {
     return allCommands.filter((cmd) => cmd.title.toLowerCase().includes(query))
   }, [allCommands, query])
 
-  // Navigable panels in overview order, matched by title.
+  // Navigable panels in overview order, matched by title. Local panels first,
+  // then panels living in other windows (labelled "Other window").
   const filteredPanels = useMemo<PanelResult[]>(() => {
     const results: PanelResult[] = []
     for (const panel of orderedPanels) {
@@ -230,8 +246,19 @@ export const CommandPalette: React.FC = () => {
         secondary: panel.filePath ?? panel.url ?? panel.type,
       })
     }
+    for (const panel of otherWindowPanels) {
+      if (!NAVIGABLE_PANEL_TYPES.includes(panel.type)) continue
+      if (query && !panel.title.toLowerCase().includes(query)) continue
+      results.push({
+        panelId: panel.panelId,
+        title: panel.title,
+        type: panel.type,
+        secondary: 'Other window',
+        inOtherWindow: true,
+      })
+    }
     return results
-  }, [orderedPanels, query])
+  }, [orderedPanels, otherWindowPanels, query])
 
   // With a query, search workspace files by name (debounced). With an empty box,
   // skip the filesystem walk and show recently-opened files instead.
@@ -340,7 +367,9 @@ export const CommandPalette: React.FC = () => {
       if (item.kind === 'command') {
         item.command.action()
       } else if (item.kind === 'panel') {
-        focusPanelById(item.panel.panelId)
+        // A panel in another window: ask main to focus that window and reveal it.
+        if (item.panel.inOtherWindow) void window.electronAPI.focusWindowPanel(item.panel.panelId)
+        else focusPanelById(item.panel.panelId)
       } else {
         openFile(item.file)
       }
@@ -457,7 +486,7 @@ export const CommandPalette: React.FC = () => {
                       >
                         <PanelIcon type={panel.type} />
                         <span className="text-[13px] text-primary flex-1 truncate">{panel.title}</span>
-                        <span className="text-[11px] text-muted capitalize">{panel.type}</span>
+                        <span className="text-[11px] text-muted capitalize">{panel.inOtherWindow ? 'Other window' : panel.type}</span>
                       </Row>
                     )
                   })}

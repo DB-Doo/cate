@@ -130,6 +130,16 @@ export const BOOT_SNAPSHOT_WRITE = 'boot:snapshotWrite' // renderer -> main
  *  via OS "Open With..."). Renderer opens it as a new workspace. */
 export const APP_OPEN_PATH = 'app:openPath'
 
+// Auto-updater — in-app "update ready" modal
+// Main -> renderer: update lifecycle status. Payload: UpdateStatus
+// ({ state, version, percent? }). Broadcast on every electron-updater event.
+export const UPDATE_STATUS = 'update:status'
+// Renderer -> main: restart now and apply the staged update (quitAndInstall).
+export const UPDATE_QUIT_AND_INSTALL = 'update:quitAndInstall'
+// Renderer -> main: pull the latest status (the modal can mount after the
+// download-finished event already fired). Returns the cached UpdateStatus.
+export const UPDATE_GET_STATUS = 'update:getStatus'
+
 // Analytics — post-update feedback prompt
 // Main -> renderer: show the modal. Payload: { fromVersion, toVersion }
 export const ANALYTICS_FEEDBACK_PROMPT = 'analytics:feedbackPrompt'
@@ -273,6 +283,16 @@ export const DOCK_WINDOW_RESTORE = 'dock:windowRestore'      // renderer -> main
 // Final awaited sync from a dock window before quit reads listDockWindows().
 export const DOCK_WINDOW_FLUSH_SYNC = 'dock:windowFlushSync' // main -> renderer
 export const DOCK_WINDOW_FLUSH_SYNC_DONE = 'dock:windowFlushSyncDone' // renderer -> main
+
+// Cross-window panel discovery — main maintains the union of panels across ALL
+// windows and broadcasts it, so every window's overview + Cmd+K can find/reveal
+// panels that live in other windows. Every window type reports its own panels via
+// WINDOW_PANELS_REPORT (lightweight, on appStore change), kept separate from the
+// heavier dock/panel session-persistence syncs.
+export const WINDOW_PANELS_CHANGED = 'window:panelsChanged'   // main -> renderer (broadcast)
+export const FOCUS_WINDOW_PANEL = 'window:focusPanel'         // renderer -> main
+export const REVEAL_PANEL_IN_WINDOW = 'detached:revealPanelInWindow' // main -> owning renderer
+export const WINDOW_PANELS_REPORT = 'window:panelsReport'     // renderer -> main (this window's panels)
 
 // Cross-window drag coordination
 export const CROSS_WINDOW_DRAG_START = 'crossDrag:start'       // renderer -> main

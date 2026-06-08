@@ -2,8 +2,19 @@
 // Type declaration for window.electronAPI exposed via contextBridge
 // =============================================================================
 
-import type { AgentCreateOptions, AgentEventEnvelope, AgentExtensionUIResponse, AgentImageAttachment, AgentModelRef, AgentModelDescriptor, AgentRpcState, AgentSessionListEntry, AgentSessionStats, AgentSlashCommand, AgentThinkingLevel, AgentToolApprovalRequest, AppSettings, AgentState, AuthProviderDescriptor, AuthProviderStatus, CanvasLayoutSnapshot, CateWindowParams, CustomOpenAIProvider, DockWindowInitPayload, DetachedDockWindowSnapshot, DockStateSnapshot, FileSearchOptions, FileSearchResult, FileTreeNode, GitInfo, SearchOptions, SearchResultBatch, SearchDoneEvent, NotificationAction, OAuthFlowEvent, PanelState, PanelTransferSnapshot, PanelWindowSnapshot, PerfSnapshot, Point, SessionSnapshot, SidebarSession, TerminalActivity, WorkspaceInfo, WorkspaceMutationResult, RemoteConnectSpec, CompanionConnectResult, CompanionStatusEvent, CompanionConnection, CompanionPhase, RemoteProjectEntry, SshHostEntry, UIState } from './types'
+import type { AgentCreateOptions, AgentEventEnvelope, AgentExtensionUIResponse, AgentImageAttachment, AgentModelRef, AgentModelDescriptor, AgentRpcState, AgentSessionListEntry, AgentSessionStats, AgentSlashCommand, AgentThinkingLevel, AgentToolApprovalRequest, AppSettings, AgentState, AuthProviderDescriptor, AuthProviderStatus, CanvasLayoutSnapshot, CateWindowParams, CustomOpenAIProvider, DockWindowInitPayload, DetachedDockWindowSnapshot, WindowPanelInfo, WindowPanelReport, DockStateSnapshot, FileSearchOptions, FileSearchResult, FileTreeNode, GitInfo, SearchOptions, SearchResultBatch, SearchDoneEvent, NotificationAction, OAuthFlowEvent, PanelState, PanelTransferSnapshot, PanelWindowSnapshot, PerfSnapshot, Point, SessionSnapshot, SidebarSession, TerminalActivity, WorkspaceInfo, WorkspaceMutationResult, RemoteConnectSpec, CompanionConnectResult, CompanionStatusEvent, CompanionConnection, CompanionPhase, RemoteProjectEntry, SshHostEntry, UIState } from './types'
 import type { SavedSkill, InstalledSkill, SkillEntry, SkillSource, SkillTargetId } from './skills'
+
+/** Lifecycle state of the auto-updater, surfaced to the renderer for the
+ *  in-app "update ready" modal. `downloaded` is the one the modal acts on. */
+export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
+export interface UpdateStatus {
+  state: UpdateState
+  /** Version of the update in flight, or null when unknown. */
+  version: string | null
+  /** Download progress 0-100 (present while state === 'downloading'). */
+  percent?: number
+}
 
 export interface NativeContextMenuItem {
   id?: string
@@ -651,6 +662,23 @@ export interface ElectronAPI {
   dockWindowFlushSyncDone(): void
 
   // ---------------------------------------------------------------------------
+  // Cross-window panel discovery
+  // ---------------------------------------------------------------------------
+
+  /** Subscribe to the union of panels across all windows (for discovering panels
+   *  that live in other windows). */
+  onWindowPanelsChanged(callback: (panels: WindowPanelInfo[]) => void): () => void
+
+  /** Ask main to focus the window that owns `panelId` and reveal it. */
+  focusWindowPanel(panelId: string): Promise<void>
+
+  /** Report this window's panels (across its workspaces) for cross-window discovery. */
+  reportWindowPanels(report: WindowPanelReport[]): Promise<void>
+
+  /** This window owns `panelId` — bring it forward within this window. */
+  onRevealPanelInWindow(callback: (panelId: string) => void): () => void
+
+  // ---------------------------------------------------------------------------
   // Cross-window drag coordination
   // ---------------------------------------------------------------------------
 
@@ -773,6 +801,18 @@ export interface ElectronAPI {
   /** Push a (panelId, webContentsId, alive) tuple to main so it can build a
    *  webContents → portal-panel reverse map for popup parent resolution. */
   orchRegisterPortalWc(payload: { panelId: string; webContentsId: number; alive: boolean }): void
+
+  // -------------------------------------------------------------------------
+  // Auto-updater — in-app "update ready" modal
+  // -------------------------------------------------------------------------
+
+  /** Subscribe to auto-updater status changes. Returns an unsubscribe fn. */
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
+  /** Pull the latest auto-updater status (the modal mounts after the event). */
+  getUpdateStatus(): Promise<UpdateStatus>
+  /** Restart now and apply the staged update (electron-updater quitAndInstall).
+   *  Resolves false if no update is staged or self-update isn't possible. */
+  quitAndInstallUpdate(): Promise<boolean>
 
   // -------------------------------------------------------------------------
   // Analytics — post-update feedback prompt

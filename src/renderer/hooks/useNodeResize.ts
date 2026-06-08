@@ -14,6 +14,7 @@ import type { SharedBorder } from '../canvas/layoutEngine'
 import type { PanelType, Point, Size } from '../../shared/types'
 import { detectEdge, getCursorForEdge } from './resizeEdge'
 import type { ResizeEdge } from './resizeEdge'
+import { pinDocumentCursor } from '../lib/dom/pinDocumentCursor'
 
 // Re-exported so existing importers (CanvasNode, useNodeResizeCursor,
 // NodeResizeOverlay) keep importing from this module unchanged.
@@ -109,10 +110,7 @@ export function useNodeResize(
       const previousBodyCursor = document.body.style.cursor
       const resizeCursor = getCursorForEdge(edge)
       document.body.style.cursor = resizeCursor
-      document.body.classList.add('canvas-interacting')
-      const cursorStyleEl = document.createElement('style')
-      cursorStyleEl.textContent = `*, *::before, *::after { cursor: ${resizeCursor} !important; }`
-      document.head.appendChild(cursorStyleEl)
+      const unpinCursor = pinDocumentCursor(resizeCursor)
 
       // Detect shared borders for cardinal edges
       if (isCardinalEdge(edge)) {
@@ -422,8 +420,7 @@ export function useNodeResize(
         currentEdgeRef.current = null
 
         document.body.style.cursor = previousBodyCursor
-        document.body.classList.remove('canvas-interacting')
-        cursorStyleEl.remove()
+        unpinCursor()
 
         // Cancel any pending RAF and flush the last geometry immediately
         if (rafId.current) {

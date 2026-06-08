@@ -3,7 +3,7 @@
 // panel migration.
 // =============================================================================
 
-import type { PanelState, PanelTransferSnapshot, PanelLocation, Point, Size, DockLayoutNode } from '../../shared/types'
+import type { PanelState, PanelTransferSnapshot, PanelLocation, Point, Size, DockLayoutNode, WorktreeMeta } from '../../shared/types'
 import { terminalRegistry } from './terminal/terminalRegistry'
 import { terminalRestoreData } from './terminal/terminalRestoreData'
 import { getOrCreateCanvasStoreForPanel } from '../stores/canvasStore'
@@ -36,6 +36,9 @@ export function createTransferSnapshot(
     /** Source workspace root, threaded so a detached window's stub workspace
      *  can resolve a cwd for new terminals. */
     workspaceRootPath?: string
+    /** Source workspace's worktree registry, threaded so the receiving window can
+     *  resolve worktree accent colors for this panel (and a canvas's children). */
+    worktrees?: WorktreeMeta[]
   } = {},
 ): PanelTransferSnapshot {
   const snapshot: PanelTransferSnapshot = {
@@ -43,6 +46,7 @@ export function createTransferSnapshot(
     geometry,
     sourceLocation,
     rootPath: options.workspaceRootPath,
+    worktrees: options.worktrees && options.worktrees.length > 0 ? options.worktrees : undefined,
   }
 
   // Terminal-specific: capture PTY ID and scrollback

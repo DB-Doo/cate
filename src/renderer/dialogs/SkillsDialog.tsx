@@ -35,6 +35,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useAppStore } from '../stores/appStore'
 import log from '../lib/logger'
 import { errorMessage } from '../lib/errorMessage'
+import { useEscapeKey } from '../lib/hooks/useEscapeKey'
 import {
   SKILL_TARGETS,
   type InstalledSkill,
@@ -150,14 +151,7 @@ export function SkillsDialog() {
 
   const close = useCallback(() => setShow(false), [setShow])
 
-  useEffect(() => {
-    if (!show) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); close() }
-    }
-    document.addEventListener('keydown', handler, { capture: true })
-    return () => document.removeEventListener('keydown', handler, { capture: true })
-  }, [show, close])
+  useEscapeKey(show, close)
 
   const terms = useMemo(() => query.trim().toLowerCase().split(/\s+/).filter(Boolean), [query])
   const installedKeys = useMemo(

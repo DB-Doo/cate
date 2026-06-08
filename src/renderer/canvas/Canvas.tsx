@@ -9,7 +9,7 @@ import { useCanvasStoreContext, useCanvasStoreApi } from '../stores/CanvasStoreC
 import { useAppStore, type PanelPlacement } from '../stores/appStore'
 import { useCanvasInteraction } from '../hooks/useCanvasInteraction'
 import { useAutoFocusLargestVisible } from '../hooks/useAutoFocusLargestVisible'
-import { useUIStore, effectiveCanvasTool } from '../stores/uiStore'
+import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { canvasToView, viewToCanvas } from '../lib/canvas/coordinates'
 import CanvasGrid from './CanvasGrid'
@@ -168,7 +168,7 @@ const Canvas: React.FC<CanvasProps> = ({ children, onCreateAtPoint, panelId }) =
   const marquee = useUIStore((s) => s.marquee)
   // Idle cursor reflects the active tool (React owns idle; useCanvasInteraction
   // overrides to 'grabbing' during an active pan and hands control back on release).
-  const handToolActive = useUIStore((s) => effectiveCanvasTool(s) === 'hand')
+  const handToolActive = useUIStore((s) => s.activeTool === 'hand')
   const idleCursor = handToolActive ? 'grab' : 'default'
   const showWorktreeTerritory = useSettingsStore((s) => s.showWorktreeTerritory)
 

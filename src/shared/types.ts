@@ -256,6 +256,34 @@ export type WorkspaceMutationResult =
 
 export type CateWindowType = 'main' | 'panel' | 'dock'
 
+/** A shadow record of a panel and the window that hosts it. Main maintains the
+ *  union across ALL windows (main + detached) and broadcasts it, so every window
+ *  can list/reveal the panels that live in OTHER windows (it filters out its own
+ *  by panel id). `parentCanvasId` is set for panels nested inside a canvas, so
+ *  the overview can render a detached canvas with its children. */
+export interface WindowPanelInfo {
+  panelId: string
+  type: PanelType
+  title: string
+  workspaceId: string
+  ownerWindowId: number
+  ownerWindowType: CateWindowType
+  /** Set when this panel lives inside a canvas panel in its window. */
+  parentCanvasId?: string
+}
+
+/** A single window's report of its panels for cross-window discovery, sent on
+ *  appStore change by every window type. Main stamps the owning window + type to
+ *  turn each into a WindowPanelInfo. `parentCanvasId` is resolved renderer-side
+ *  from the window's canvas stores. */
+export interface WindowPanelReport {
+  panelId: string
+  type: PanelType
+  title: string
+  workspaceId: string
+  parentCanvasId?: string
+}
+
 export interface CateWindowParams {
   type: CateWindowType
   /** For panel windows: the panel type being displayed */
@@ -274,6 +302,10 @@ export interface DockWindowInitPayload {
   /** Owning workspace's project root, so the detached window's stub workspace
    *  can resolve a cwd for newly-created terminals instead of re-prompting. */
   rootPath?: string
+  /** Owning workspace's worktree registry (id/path/color/label). Carried so the
+   *  detached window's stub workspace can resolve each panel's worktree accent —
+   *  without it, worktree pills/tab tints render colorless in detached windows. */
+  worktrees?: WorktreeMeta[]
   /** Session-restore only: per top-level terminal panelId → the (now-dead) ptyId
    *  whose saved scrollback log should be replayed into the freshly-spawned PTY.
    *  Absent for a fresh live single-panel detach (which uses PANEL_RECEIVE). */
@@ -319,6 +351,12 @@ export interface PanelTransferSnapshot {
    *  workspace inherits the cwd context (new terminals resolve to the project
    *  folder instead of re-prompting). */
   rootPath?: string
+
+  /** Owning workspace's worktree registry (id/path/color/label). Carried so the
+   *  receiving window's stub workspace can resolve the panel's (and a canvas's
+   *  children's) worktree accent colors — pills/tab tints would otherwise be
+   *  colorless in detached windows whose stub workspace has no worktree records. */
+  worktrees?: WorktreeMeta[]
 
   // Terminal-specific
   terminalPtyId?: string
@@ -558,7 +596,6 @@ export type ShortcutAction =
   | 'toggleFileExplorer'
   | 'toggleSearch'
   | 'toggleMinimap'
-  | 'nodeSwitcher'
   | 'commandPalette'
   | 'zoomIn'
   | 'zoomOut'
@@ -572,8 +609,7 @@ export type ShortcutAction =
   | 'undo'
   | 'redo'
   | 'deleteNode'
-  | 'toolSelect'
-  | 'toolHand'
+  | 'toggleTool'
   | 'navigateUp'
   | 'navigateDown'
   | 'navigateLeft'
@@ -613,7 +649,6 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   'toggleFileExplorer',
   'toggleSearch',
   'toggleMinimap',
-  'nodeSwitcher',
   'commandPalette',
   'zoomIn',
   'zoomOut',
@@ -627,8 +662,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   'undo',
   'redo',
   'deleteNode',
-  'toolSelect',
-  'toolHand',
+  'toggleTool',
   'navigateUp',
   'navigateDown',
   'navigateLeft',
@@ -651,7 +685,6 @@ export const SHORTCUT_DISPLAY_NAMES: Record<ShortcutAction, string> = {
   toggleFileExplorer: 'Toggle File Explorer',
   toggleSearch: 'Toggle Search',
   toggleMinimap: 'Toggle Minimap',
-  nodeSwitcher: 'Panel Switcher',
   commandPalette: 'Command Palette',
   zoomIn: 'Zoom In',
   zoomOut: 'Zoom Out',
@@ -665,8 +698,7 @@ export const SHORTCUT_DISPLAY_NAMES: Record<ShortcutAction, string> = {
   undo: 'Undo',
   redo: 'Redo',
   deleteNode: 'Delete Focused Panel',
-  toolSelect: 'Select Tool',
-  toolHand: 'Hand Tool',
+  toggleTool: 'Toggle Select / Hand Tool',
   navigateUp: 'Navigate to Panel Above',
   navigateDown: 'Navigate to Panel Below',
   navigateLeft: 'Navigate to Panel Left',
@@ -689,7 +721,6 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, StoredShortcut> = {
   toggleFileExplorer: storedShortcut('x', { command: true, shift: true }),
   toggleSearch: storedShortcut('f', { command: true, shift: true }),
   toggleMinimap: storedShortcut('m', { command: true, shift: true }),
-  nodeSwitcher: storedShortcut(' ', { control: true }),
   commandPalette: storedShortcut('k', { command: true }),
   zoomIn: storedShortcut('=', { command: true }),
   zoomOut: storedShortcut('-', { command: true }),
@@ -703,10 +734,11 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, StoredShortcut> = {
   undo: storedShortcut('z', { command: true }),
   redo: storedShortcut('z', { command: true, shift: true }),
   deleteNode: storedShortcut('Backspace', { command: true }),
-  // Modifier combos (not bare V/H) so they switch tools even while typing in a
-  // terminal/editor — and ⌘⇧D avoids the macOS ⌘H "Hide Application" clash.
-  toolSelect: storedShortcut('s', { command: true, shift: true }),
-  toolHand: storedShortcut('d', { command: true, shift: true }),
+  // ⇧Space toggles the tool from anywhere — including a focused terminal, editor,
+  // or input — by being intercepted before the surface sees it. (Plain Space also
+  // toggles, but only when the canvas is focused, since a bare key must still type
+  // a space while you're typing.)
+  toggleTool: storedShortcut(' ', { shift: true }),
   navigateUp: storedShortcut('↑', { command: true }),
   navigateDown: storedShortcut('↓', { command: true }),
   navigateLeft: storedShortcut('←', { command: true }),

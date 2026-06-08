@@ -144,6 +144,10 @@ import {
   DOCK_WINDOW_FLUSH_SYNC,
   DOCK_WINDOW_FLUSH_SYNC_DONE,
   DOCK_WINDOWS_LIST,
+  WINDOW_PANELS_CHANGED,
+  FOCUS_WINDOW_PANEL,
+  REVEAL_PANEL_IN_WINDOW,
+  WINDOW_PANELS_REPORT,
   CROSS_WINDOW_DRAG_START,
   CROSS_WINDOW_DRAG_UPDATE,
   CROSS_WINDOW_DRAG_DROP,
@@ -167,6 +171,9 @@ import {
   BROWSER_SET_PROXY,
   NATIVE_FILE_DRAG,
   CAPTURE_PAGE,
+  UPDATE_STATUS,
+  UPDATE_QUIT_AND_INSTALL,
+  UPDATE_GET_STATUS,
   ANALYTICS_FEEDBACK_PROMPT,
   ANALYTICS_FEEDBACK_SUBMIT,
   ANALYTICS_FEEDBACK_DISMISS,
@@ -248,6 +255,7 @@ import {
   PERF_GET,
 } from '../shared/ipc-channels'
 import type { AppSettings, SidebarSession, SearchOptions, SearchResultBatch, SearchDoneEvent } from '../shared/types'
+import type { UpdateStatus } from '../shared/electron-api'
 
 // Cache native-fullscreen state so renderer drag handlers can synchronously
 // check it without an IPC round-trip on every mousemove. Main BROADCASTS
@@ -282,6 +290,22 @@ function maximizedLiveCheck(): boolean {
     return cachedMaximized
   } catch {
     return cachedMaximized
+  }
+}
+
+// Shared factory for the many `onXyz(callback)` subscription methods below.
+// Registers an ipcRenderer listener that strips the IPC event and forwards the
+// remaining args verbatim to `callback`, and returns an unsubscribe closure.
+function createIpcListener<Args extends unknown[]>(
+  channel: string,
+  callback: (...args: Args) => void,
+): () => void {
+  const listener = (_event: Electron.IpcRendererEvent, ...args: Args): void => {
+    callback(...args)
+  }
+  ipcRenderer.on(channel, listener)
+  return () => {
+    ipcRenderer.removeListener(channel, listener)
   }
 }
 
@@ -328,17 +352,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onTerminalData(callback: (terminalId: string, data: string) => void): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      terminalId: string,
-      data: string,
-    ): void => {
-      callback(terminalId, data)
-    }
-    ipcRenderer.on(TERMINAL_DATA, listener)
-    return () => {
-      ipcRenderer.removeListener(TERMINAL_DATA, listener)
-    }
+    return createIpcListener(TERMINAL_DATA, callback)
   },
 
   terminalGetCwd(ptyId: string): Promise<string | null> {
@@ -358,17 +372,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onTerminalExit(callback: (terminalId: string, exitCode: number) => void): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      terminalId: string,
-      exitCode: number,
-    ): void => {
-      callback(terminalId, exitCode)
-    }
-    ipcRenderer.on(TERMINAL_EXIT, listener)
-    return () => {
-      ipcRenderer.removeListener(TERMINAL_EXIT, listener)
-    }
+    return createIpcListener(TERMINAL_EXIT, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -410,16 +414,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onFsWatchEvent(
     callback: (event: { type: 'create' | 'update' | 'delete'; path: string }) => void,
   ): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      watchEvent: { type: 'create' | 'update' | 'delete'; path: string },
-    ): void => {
-      callback(watchEvent)
-    }
-    ipcRenderer.on(FS_WATCH_EVENT, listener)
-    return () => {
-      ipcRenderer.removeListener(FS_WATCH_EVENT, listener)
-    }
+    return createIpcListener(FS_WATCH_EVENT, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -435,23 +430,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onSearchResult(callback: (batch: SearchResultBatch) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, batch: SearchResultBatch): void => {
-      callback(batch)
-    }
-    ipcRenderer.on(SEARCH_RESULT, listener)
-    return () => {
-      ipcRenderer.removeListener(SEARCH_RESULT, listener)
-    }
+    return createIpcListener(SEARCH_RESULT, callback)
   },
 
   onSearchDone(callback: (event: SearchDoneEvent) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, done: SearchDoneEvent): void => {
-      callback(done)
-    }
-    ipcRenderer.on(SEARCH_DONE, listener)
-    return () => {
-      ipcRenderer.removeListener(SEARCH_DONE, listener)
-    }
+    return createIpcListener(SEARCH_DONE, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -637,33 +620,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       agentPresent: unknown,
     ) => void,
   ): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      terminalId: string,
-      activity: unknown,
-      agentName: unknown,
-      agentPresent: unknown,
-    ): void => {
-      callback(terminalId, activity, agentName, agentPresent)
-    }
-    ipcRenderer.on(SHELL_ACTIVITY_UPDATE, listener)
-    return () => {
-      ipcRenderer.removeListener(SHELL_ACTIVITY_UPDATE, listener)
-    }
+    return createIpcListener(SHELL_ACTIVITY_UPDATE, callback)
   },
 
   onShellPortsUpdate(callback: (terminalId: string, ports: number[]) => void): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      terminalId: string,
-      ports: number[],
-    ): void => {
-      callback(terminalId, ports)
-    }
-    ipcRenderer.on(SHELL_PORTS_UPDATE, listener)
-    return () => {
-      ipcRenderer.removeListener(SHELL_PORTS_UPDATE, listener)
-    }
+    return createIpcListener(SHELL_PORTS_UPDATE, callback)
   },
 
   shellReportAgentScreenState(terminalId: string, state: string): void {
@@ -673,48 +634,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onAgentScreenStateUpdate(
     callback: (terminalId: string, state: string) => void,
   ): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      terminalId: string,
-      state: string,
-    ): void => {
-      callback(terminalId, state)
-    }
-    ipcRenderer.on(SHELL_AGENT_SCREEN_STATE, listener)
-    return () => {
-      ipcRenderer.removeListener(SHELL_AGENT_SCREEN_STATE, listener)
-    }
+    return createIpcListener(SHELL_AGENT_SCREEN_STATE, callback)
   },
 
   onShellCwdUpdate(callback: (terminalId: string, cwd: string) => void): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      terminalId: string,
-      cwd: string,
-    ): void => {
-      callback(terminalId, cwd)
-    }
-    ipcRenderer.on(SHELL_CWD_UPDATE, listener)
-    return () => {
-      ipcRenderer.removeListener(SHELL_CWD_UPDATE, listener)
-    }
+    return createIpcListener(SHELL_CWD_UPDATE, callback)
   },
 
   onGitBranchUpdate(
     callback: (workspaceId: string, branch: string, isDirty: boolean) => void,
   ): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      workspaceId: string,
-      branch: string,
-      isDirty: boolean,
-    ): void => {
-      callback(workspaceId, branch, isDirty)
-    }
-    ipcRenderer.on(GIT_BRANCH_UPDATE, listener)
-    return () => {
-      ipcRenderer.removeListener(GIT_BRANCH_UPDATE, listener)
-    }
+    return createIpcListener(GIT_BRANCH_UPDATE, callback)
   },
 
   gitMonitorStart(workspaceId: string, rootPath: string): void {
@@ -754,13 +684,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onSettingsChanged(callback: (key: keyof AppSettings, value: unknown) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, key: keyof AppSettings, value: unknown): void => {
-      callback(key, value)
-    }
-    ipcRenderer.on(SETTINGS_CHANGED, listener)
-    return () => {
-      ipcRenderer.removeListener(SETTINGS_CHANGED, listener)
-    }
+    return createIpcListener(SETTINGS_CHANGED, callback)
   },
 
   settingsOpenInEditor(): Promise<string> {
@@ -768,13 +692,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onSettingsReloaded(callback: (settings: AppSettings) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, settings: AppSettings): void => {
-      callback(settings)
-    }
-    ipcRenderer.on(SETTINGS_RELOADED, listener)
-    return () => {
-      ipcRenderer.removeListener(SETTINGS_RELOADED, listener)
-    }
+    return createIpcListener(SETTINGS_RELOADED, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -783,9 +701,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 
   onSessionFlushSave(callback: () => void): () => void {
-    const handler = () => callback()
-    ipcRenderer.on(SESSION_FLUSH_SAVE, handler)
-    return () => ipcRenderer.removeListener(SESSION_FLUSH_SAVE, handler)
+    return createIpcListener(SESSION_FLUSH_SAVE, callback)
   },
 
   sessionFlushSaveDone(): void {
@@ -812,11 +728,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ---------------------------------------------------------------------------
 
   onOpenPath(callback: (filePath: string) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, filePath: string): void => {
-      callback(filePath)
-    }
-    ipcRenderer.on(APP_OPEN_PATH, listener)
-    return () => { ipcRenderer.removeListener(APP_OPEN_PATH, listener) }
+    return createIpcListener(APP_OPEN_PATH, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -972,11 +884,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onNotifyAction(callback: (action: unknown) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, action: unknown): void => {
-      callback(action)
-    }
-    ipcRenderer.on(NOTIFY_ACTION, listener)
-    return () => { ipcRenderer.removeListener(NOTIFY_ACTION, listener) }
+    return createIpcListener(NOTIFY_ACTION, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -1000,11 +908,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onPanelReceive(callback: (snapshot: unknown) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown): void => {
-      callback(snapshot)
-    }
-    ipcRenderer.on(PANEL_RECEIVE, listener)
-    return () => { ipcRenderer.removeListener(PANEL_RECEIVE, listener) }
+    return createIpcListener(PANEL_RECEIVE, callback)
   },
 
   panelWindowsList(): Promise<unknown[]> {
@@ -1024,11 +928,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onPanelWindowDockBack(callback: (payload: { panelWindowId: number; snapshot?: unknown }) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, payload: { panelWindowId: number; snapshot?: unknown }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on(PANEL_WINDOW_DOCK_BACK, listener)
-    return () => { ipcRenderer.removeListener(PANEL_WINDOW_DOCK_BACK, listener) }
+    return createIpcListener(PANEL_WINDOW_DOCK_BACK, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -1078,9 +978,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onDragEnd(callback: (dragId?: string) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, dragId?: string): void => { callback(dragId) }
-    ipcRenderer.on(DRAG_END, listener)
-    return () => { ipcRenderer.removeListener(DRAG_END, listener) }
+    return createIpcListener(DRAG_END, callback)
   },
 
   /** Subscribe to native-fullscreen state changes. Fires with the new boolean
@@ -1097,11 +995,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
    *  on-disk workspace file diverges from what Cate last wrote (edited
    *  externally) or comes back in sync after a reload. */
   onWorkspaceExternalEdit(callback: (payload: { rootPath: string }) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, payload: { rootPath: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on(WORKSPACE_EXTERNAL_EDIT, listener)
-    return () => { ipcRenderer.removeListener(WORKSPACE_EXTERNAL_EDIT, listener) }
+    return createIpcListener(WORKSPACE_EXTERNAL_EDIT, callback)
   },
 
   /** Tell main the user declined the reload prompt — resume saving so the
@@ -1115,11 +1009,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ---------------------------------------------------------------------------
 
   onDockWindowInit(callback: (payload: unknown) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-      callback(payload)
-    }
-    ipcRenderer.on(DOCK_WINDOW_INIT, listener)
-    return () => { ipcRenderer.removeListener(DOCK_WINDOW_INIT, listener) }
+    return createIpcListener(DOCK_WINDOW_INIT, callback)
   },
 
   dockWindowSyncState(state: unknown): Promise<void> {
@@ -1135,13 +1025,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onDockWindowFlushSync(callback: () => void): () => void {
-    const listener = (): void => { callback() }
-    ipcRenderer.on(DOCK_WINDOW_FLUSH_SYNC, listener)
-    return () => { ipcRenderer.removeListener(DOCK_WINDOW_FLUSH_SYNC, listener) }
+    return createIpcListener(DOCK_WINDOW_FLUSH_SYNC, callback)
   },
 
   dockWindowFlushSyncDone(): void {
     ipcRenderer.send(DOCK_WINDOW_FLUSH_SYNC_DONE)
+  },
+
+  // ---------------------------------------------------------------------------
+  // Cross-window panel discovery
+  // ---------------------------------------------------------------------------
+
+  onWindowPanelsChanged(callback: (panels: unknown[]) => void): () => void {
+    return createIpcListener(WINDOW_PANELS_CHANGED, callback)
+  },
+
+  focusWindowPanel(panelId: string): Promise<void> {
+    return ipcRenderer.invoke(FOCUS_WINDOW_PANEL, panelId)
+  },
+
+  reportWindowPanels(report: unknown[]): Promise<void> {
+    return ipcRenderer.invoke(WINDOW_PANELS_REPORT, report)
+  },
+
+  onRevealPanelInWindow(callback: (panelId: string) => void): () => void {
+    return createIpcListener(REVEAL_PANEL_IN_WINDOW, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -1153,11 +1061,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onCrossWindowDragUpdate(callback: (screenPos: unknown, snapshot: unknown, dragId?: unknown) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, screenPos: unknown, snapshot: unknown, dragId?: unknown): void => {
-      callback(screenPos, snapshot, dragId)
-    }
-    ipcRenderer.on(CROSS_WINDOW_DRAG_UPDATE, listener)
-    return () => { ipcRenderer.removeListener(CROSS_WINDOW_DRAG_UPDATE, listener) }
+    return createIpcListener(CROSS_WINDOW_DRAG_UPDATE, callback)
   },
 
   crossWindowDragDrop(panelId: string): Promise<void> {
@@ -1209,13 +1113,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke(COMPANION_DELETE, connection)
   },
   onCompanionStatus(callback: (event: unknown) => void): () => void {
-    const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-      callback(payload)
-    }
-    ipcRenderer.on(COMPANION_STATUS, listener)
-    return () => {
-      ipcRenderer.removeListener(COMPANION_STATUS, listener)
-    }
+    return createIpcListener(COMPANION_STATUS, callback)
   },
 
   workspaceUpdate(id: string, changes: Record<string, unknown>): Promise<unknown> {
@@ -1227,17 +1125,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onWorkspaceChanged(callback: (workspaces: unknown[], originWindowId: number | null) => void): () => void {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      workspaces: unknown[],
-      originWindowId: number | null,
-    ): void => {
-      callback(workspaces, originWindowId)
-    }
-    ipcRenderer.on(WORKSPACE_CHANGED, listener)
-    return () => {
-      ipcRenderer.removeListener(WORKSPACE_CHANGED, listener)
-    }
+    return createIpcListener(WORKSPACE_CHANGED, callback)
   },
 
   // ---------------------------------------------------------------------------
@@ -1270,43 +1158,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onMenuOpenSettings(callback: () => void): () => void {
-    const listener = (): void => { callback() }
-    ipcRenderer.on(MENU_OPEN_SETTINGS, listener)
-    return () => { ipcRenderer.removeListener(MENU_OPEN_SETTINGS, listener) }
+    return createIpcListener(MENU_OPEN_SETTINGS, callback)
   },
 
   onMenuTriggerAction(callback: (action: string) => void): () => void {
-    const listener = (_e: unknown, action: string): void => { callback(action) }
-    ipcRenderer.on(MENU_TRIGGER_ACTION, listener)
-    return () => { ipcRenderer.removeListener(MENU_TRIGGER_ACTION, listener) }
+    return createIpcListener(MENU_TRIGGER_ACTION, callback)
   },
 
   onMenuLoadLayout(callback: (name: string) => void): () => void {
-    const listener = (_e: unknown, name: string): void => { callback(name) }
-    ipcRenderer.on(MENU_LOAD_LAYOUT, listener)
-    return () => { ipcRenderer.removeListener(MENU_LOAD_LAYOUT, listener) }
+    return createIpcListener(MENU_LOAD_LAYOUT, callback)
   },
 
   onMenuCreatePanel(callback: (payload: { action: string; workspaceId?: string }) => void): () => void {
-    const listener = (_e: unknown, payload: { action: string; workspaceId?: string }): void => { callback(payload) }
-    ipcRenderer.on(MENU_CREATE_PANEL, listener)
-    return () => { ipcRenderer.removeListener(MENU_CREATE_PANEL, listener) }
+    return createIpcListener(MENU_CREATE_PANEL, callback)
   },
 
   onBrowserShortcut(callback: (action: string) => void): () => void {
-    const listener = (_e: unknown, action: string): void => { callback(action) }
-    ipcRenderer.on(BROWSER_SHORTCUT, listener)
-    return () => { ipcRenderer.removeListener(BROWSER_SHORTCUT, listener) }
+    return createIpcListener(BROWSER_SHORTCUT, callback)
   },
 
   // ---------------------------------------------------------------------------
   // Analytics — post-update feedback prompt
   // ---------------------------------------------------------------------------
 
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void {
+    return createIpcListener(UPDATE_STATUS, callback)
+  },
+
+  getUpdateStatus(): Promise<UpdateStatus> {
+    return ipcRenderer.invoke(UPDATE_GET_STATUS)
+  },
+
+  quitAndInstallUpdate(): Promise<boolean> {
+    return ipcRenderer.invoke(UPDATE_QUIT_AND_INSTALL)
+  },
+
   onFeedbackPrompt(callback: (payload: { fromVersion: string; toVersion: string }) => void): () => void {
-    const listener = (_e: Electron.IpcRendererEvent, payload: { fromVersion: string; toVersion: string }): void => callback(payload)
-    ipcRenderer.on(ANALYTICS_FEEDBACK_PROMPT, listener)
-    return () => { ipcRenderer.removeListener(ANALYTICS_FEEDBACK_PROMPT, listener) }
+    return createIpcListener(ANALYTICS_FEEDBACK_PROMPT, callback)
   },
 
   submitFeedback(payload: { rating: number; comment?: string }): Promise<{ ok: boolean; buffered?: boolean }> {
@@ -1567,15 +1455,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onAgentEvent(callback: (envelope: unknown) => void): () => void {
-    const listener = (_e: Electron.IpcRendererEvent, envelope: unknown): void => { callback(envelope) }
-    ipcRenderer.on(AGENT_EVENT, listener)
-    return () => { ipcRenderer.removeListener(AGENT_EVENT, listener) }
+    return createIpcListener(AGENT_EVENT, callback)
   },
 
   onAgentToolRequest(callback: (req: unknown) => void): () => void {
-    const listener = (_e: Electron.IpcRendererEvent, req: unknown): void => { callback(req) }
-    ipcRenderer.on(AGENT_TOOL_REQUEST, listener)
-    return () => { ipcRenderer.removeListener(AGENT_TOOL_REQUEST, listener) }
+    return createIpcListener(AGENT_TOOL_REQUEST, callback)
   },
 
   agentCustomModelsGet(): Promise<unknown> {
@@ -1607,17 +1491,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onAuthOAuthEvent(callback: (providerId: string, event: unknown) => void): () => void {
-    const listener = (_e: Electron.IpcRendererEvent, providerId: string, event: unknown): void => {
-      callback(providerId, event)
-    }
-    ipcRenderer.on(AUTH_OAUTH_EVENT, listener)
-    return () => { ipcRenderer.removeListener(AUTH_OAUTH_EVENT, listener) }
+    return createIpcListener(AUTH_OAUTH_EVENT, callback)
   },
 
   onAuthChanged(callback: () => void): () => void {
-    const listener = (): void => { callback() }
-    ipcRenderer.on(AUTH_CHANGED, listener)
-    return () => { ipcRenderer.removeListener(AUTH_CHANGED, listener) }
+    return createIpcListener(AUTH_CHANGED, callback)
   },
 
   authSaveApiKey(providerId: string, apiKey: string): Promise<void> {

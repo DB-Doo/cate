@@ -14,6 +14,7 @@ import { reduce, initial as runtimeInitial } from './runtime'
 import { resolveDrop } from './resolve'
 import { commitDrop } from './commit'
 import { normalizeGrabOffset } from './geometry'
+import { viewToCanvas } from '../lib/canvas/coordinates'
 import { dockTabGrabOffset } from './grabOffset'
 import { findNodeIdForDockStore } from '../panels/nodeDockRegistry'
 import type { CanvasStore } from '../stores/canvasStore'
@@ -171,10 +172,7 @@ function measureCanvasNodeGrab(
     x: cursorClient.x - container.rect.left,
     y: cursorClient.y - container.rect.top,
   }
-  const cursorCanvas: Point = {
-    x: (localView.x - container.viewportOffset.x) / Math.max(zoom, 0.01),
-    y: (localView.y - container.viewportOffset.y) / Math.max(zoom, 0.01),
-  }
+  const cursorCanvas = viewToCanvas(localView, zoom, container.viewportOffset)
   // For a maximized node, project the grab proportionally into the pre-maximize
   // rect so the cursor stays at the same relative spot inside the (smaller)
   // ghost — otherwise grabbing the right side of a maximized node would put
@@ -259,6 +257,9 @@ function buildSnapshotFor(spec: DragOpSourceSpec): PanelTransferSnapshot | null 
   // Carry the source workspace root so the detached window inherits a cwd for
   // new terminals (otherwise its stub workspace has none and re-prompts).
   const rootPath = sourceWs?.rootPath || undefined
+  // Carry the worktree registry so the detached window can tint this panel's
+  // (and a canvas's children's) worktree pills/tabs.
+  const worktrees = sourceWs?.worktrees
 
   if (spec.kind === 'canvas-node') {
     const node = spec.canvasStoreApi.getState().nodes[spec.nodeId]
@@ -267,7 +268,7 @@ function buildSnapshotFor(spec: DragOpSourceSpec): PanelTransferSnapshot | null 
       panel,
       { type: 'canvas', canvasId: '', canvasNodeId: spec.nodeId },
       { origin: node.origin, size: node.size },
-      { resolveChildPanel, workspaceRootPath: rootPath },
+      { resolveChildPanel, workspaceRootPath: rootPath, worktrees },
     )
   }
 
@@ -280,7 +281,7 @@ function buildSnapshotFor(spec: DragOpSourceSpec): PanelTransferSnapshot | null 
       panel,
       { type: 'detached', windowId: 0 },
       { origin: { x: 0, y: 0 }, size },
-      { resolveChildPanel, workspaceRootPath: rootPath },
+      { resolveChildPanel, workspaceRootPath: rootPath, worktrees },
     )
   }
 
@@ -290,7 +291,7 @@ function buildSnapshotFor(spec: DragOpSourceSpec): PanelTransferSnapshot | null 
     panel,
     { type: 'dock', zone: spec.zone, stackId: spec.stackId },
     { origin: { x: 0, y: 0 }, size },
-    { resolveChildPanel, workspaceRootPath: rootPath },
+    { resolveChildPanel, workspaceRootPath: rootPath, worktrees },
   )
 }
 

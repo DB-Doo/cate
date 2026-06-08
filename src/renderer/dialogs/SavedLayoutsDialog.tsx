@@ -16,6 +16,7 @@ import {
   loadLayoutIntoActiveCanvas,
 } from '../lib/layouts'
 import log from '../lib/logger'
+import { useEscapeKey } from '../lib/hooks/useEscapeKey'
 
 export function SavedLayoutsDialog() {
   const show = useUIStore((s) => s.showLayoutsDialog)
@@ -94,15 +95,7 @@ export function SavedLayoutsDialog() {
     }
   }, [selected])
 
-  // Escape to close
-  useEffect(() => {
-    if (!show) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); close() }
-    }
-    document.addEventListener('keydown', handler, { capture: true })
-    return () => document.removeEventListener('keydown', handler, { capture: true })
-  }, [show, close])
+  useEscapeKey(show, close)
 
   if (!show) return null
 

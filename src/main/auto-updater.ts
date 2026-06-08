@@ -29,13 +29,16 @@
 // the default path.)
 // =============================================================================
 
-import { app, dialog, shell } from 'electron'
+import { app, dialog, shell, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import log from './logger'
 import { getSettingSync } from './store'
 import { sendEvent } from './analytics'
 import { canSelfUpdate } from './updateInstaller'
 import { createJsonStateFile } from './jsonStateFile'
+import { broadcastToAll } from './windowRegistry'
+import { UPDATE_STATUS, UPDATE_QUIT_AND_INSTALL, UPDATE_GET_STATUS } from '../shared/ipc-channels'
+import type { UpdateStatus } from '../shared/electron-api'
 import {
   decideInstallState,
   normalizeUpdateRecord,
@@ -85,6 +88,38 @@ let persistInstallState = false
 /** Fire-and-forget analytics; never let a telemetry failure touch the updater. */
 function track(name: string, props?: Record<string, unknown>): void {
   void sendEvent(name, props ?? {}).catch(() => {})
+}
+
+/** Latest status pushed to the renderer. Cached so a window that mounts AFTER
+ *  the download-finished event can pull the current state (UPDATE_GET_STATUS)
+ *  and still show the "update ready" modal. */
+let lastStatus: UpdateStatus = { state: 'idle', version: null }
+
+/** Broadcast an updater status change to every renderer window and cache it.
+ *  Drives the in-app "update ready" modal (see UpdateReadyDialog.tsx). */
+function pushStatus(status: UpdateStatus): void {
+  lastStatus = status
+  broadcastToAll(UPDATE_STATUS, status)
+}
+
+/** Register the renderer-facing IPC for the in-app update modal. Called once at
+ *  startup, BEFORE the dev/packaged gate, so the renderer's invoke() calls never
+ *  reject — in dev/unpackaged the updater simply never emits a 'downloaded'
+ *  status, so the modal stays hidden. */
+function registerUpdateIpc(): void {
+  ipcMain.handle(UPDATE_GET_STATUS, (): UpdateStatus => lastStatus)
+  ipcMain.handle(UPDATE_QUIT_AND_INSTALL, (): boolean => {
+    if (!updatePendingInstall || !canSelfUpdate()) return false
+    track('update_restart_clicked', { version: availableVersion })
+    // quitAndInstall quits the app, lets Squirrel.Mac swap the bundle while
+    // NOTHING is running, then relaunches the new version itself. That avoids
+    // the failure we hit with autoInstallOnAppQuit: a fast manual reopen racing
+    // the swap and triggering Squirrel's "App Still Running" abort. Defer past
+    // this IPC reply so the renderer gets `true` before the app tears down.
+    // isForceRunAfter=true guarantees the relaunch.
+    setImmediate(() => autoUpdater.quitAndInstall(false, true))
+    return true
+  })
 }
 
 /** The manual-reinstall escape hatch. Shown when self-update genuinely cannot
@@ -151,6 +186,7 @@ function wireUpdaterEvents(eligible: boolean): void {
   autoUpdater.on('checking-for-update', () => {
     log.info('[auto-updater] checking for update')
     track('update_check_started')
+    pushStatus({ state: 'checking', version: availableVersion })
   })
 
   autoUpdater.on('update-available', (info) => {
@@ -159,6 +195,7 @@ function wireUpdaterEvents(eligible: boolean): void {
     lastProgressBucket = -1
     log.info('[auto-updater] update available: v%s (eligible: %s)', version, eligible)
     track('update_available', { version: version || null })
+    pushStatus({ state: 'available', version: version || null })
     if (!eligible) {
       // Translocated / not in /Applications — can't self-update from here. Offer
       // the manual download (and the move, which would fix it permanently).
@@ -182,6 +219,7 @@ function wireUpdaterEvents(eligible: boolean): void {
       lastProgressBucket = bucket
       log.info('[auto-updater] download progress ~%d%%', bucket)
       track('update_download_progress', { percent: bucket })
+      pushStatus({ state: 'downloading', version: availableVersion, percent: bucket })
     }
   })
 
@@ -202,12 +240,15 @@ function wireUpdaterEvents(eligible: boolean): void {
     }
     log.info('[auto-updater] update downloaded: v%s — will install on quit', version)
     track('update_downloaded', { version: version || null })
+    // The signal the in-app modal acts on: offer Restart now / Install on quit.
+    pushStatus({ state: 'downloaded', version: version || null })
   })
 
   autoUpdater.on('error', (err) => {
     const message = err?.message || String(err)
     log.error('[auto-updater] error: %O', err)
     track('update_error', { message })
+    pushStatus({ state: 'error', version: availableVersion })
     // If a known update failed (e.g. Squirrel.Mac "ditto: Couldn't read PKZip
     // signature" — a signing/staging failure, the classic trapped-user cause),
     // the staged install won't apply: drop the pending flag so quit takes the
@@ -253,6 +294,8 @@ export function initAutoUpdater(): void {
   // developer can watch the real check → download → downloaded chain against a
   // local feed without cutting a GitHub release.
   const devUpdate = !app.isPackaged && process.env.CATE_DEV_UPDATE === '1'
+  // Register the modal IPC before the gate so renderer invoke() never rejects.
+  registerUpdateIpc()
   if (!app.isPackaged && !devUpdate) return
   if (devUpdate) {
     autoUpdater.forceDevUpdateConfig = true

@@ -7,7 +7,7 @@ import { useCallback, useRef, useState, useEffect } from 'react'
 import type { StoreApi } from 'zustand'
 import type { CanvasStore } from '../stores/canvasStore'
 import { useSettingsStore } from '../stores/settingsStore'
-import { useUIStore, effectiveCanvasTool } from '../stores/uiStore'
+import { useUIStore } from '../stores/uiStore'
 import { useDragStore } from '../drag'
 import { viewToCanvas } from '../lib/canvas/coordinates'
 import { isMouseWheel, type WheelLike } from '../lib/wheelIntent'
@@ -33,7 +33,7 @@ function rectsIntersect(
 
 // CSS cursor for the canvas when idle (not actively panning), per active tool.
 function idleCursorForTool(): string {
-  return effectiveCanvasTool(useUIStore.getState()) === 'hand' ? 'grab' : ''
+  return useUIStore.getState().activeTool === 'hand' ? 'grab' : ''
 }
 
 export interface CanvasContextMenuState {
@@ -306,10 +306,10 @@ export function useCanvasInteraction(
       // --- Scroll over empty canvas / unfocused panel: tool decides ---
       // In the Select (click) tool, a plain scroll zooms — for both a physical
       // mouse wheel and a trackpad two-finger scroll (Miro-style). In the Hand
-      // (drag) tool, or while Space is held, it falls through to the pan path
-      // below instead. The `mouse` flag only picks the zoom feel: discrete
-      // notch vs. continuous delta-proportional.
-      if (effectiveCanvasTool(useUIStore.getState()) !== 'hand') {
+      // (drag) tool it falls through to the pan path below instead. The `mouse`
+      // flag only picks the zoom feel: discrete notch vs. continuous
+      // delta-proportional.
+      if (useUIStore.getState().activeTool !== 'hand') {
         applyWheelZoom(e, mouse)
         return
       }
@@ -350,17 +350,31 @@ export function useCanvasInteraction(
   // Mouse: right-click drag for panning, left-click on background to unfocus
   // ---------------------------------------------------------------------------
 
+  // Shared prologue for every pan-drag origin (right/middle button, hand-tool
+  // left button). Cancels inertia and arms the panning refs/cursor; the caller
+  // owns any button-specific bookkeeping (context menu, velocity) and the
+  // preventDefault/return flow.
+  const startPanDrag = useCallback(
+    (button: number, clientX: number, clientY: number) => {
+      if (cancelInertia.current) {
+        cancelInertia.current()
+        cancelInertia.current = null
+      }
+      isPanning.current = true
+      panButton.current = button
+      lastPanPos.current = { x: clientX, y: clientY }
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = 'grabbing'
+      }
+      document.body.classList.add('canvas-interacting')
+    },
+    [canvasRef],
+  )
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button === 2 || e.button === 1) {
-        // Cancel any running inertia before starting a new drag
-        if (cancelInertia.current) {
-          cancelInertia.current()
-          cancelInertia.current = null
-        }
-        isPanning.current = true
-        panButton.current = e.button
-        lastPanPos.current = { x: e.clientX, y: e.clientY }
+        startPanDrag(e.button, e.clientX, e.clientY)
         // Only track right-click for context menu
         if (e.button === 2) {
           rightClickStart.current = { x: e.clientX, y: e.clientY }
@@ -368,10 +382,6 @@ export function useCanvasInteraction(
           velocityIndex.current = 0
           velocityCount.current = 0
         }
-        if (canvasRef.current) {
-          canvasRef.current.style.cursor = 'grabbing'
-        }
-        document.body.classList.add('canvas-interacting')
         e.preventDefault()
       } else if (e.button === 0) {
         // During deferred ghost placement: a left-click that misses every ghost
@@ -389,21 +399,11 @@ export function useCanvasInteraction(
           }
         }
 
-        // Hand tool (or Space-hold): left-drag pans the canvas, even when the
-        // press lands on a node (nodes let the event bubble here under Hand).
-        // No context menu, no inertia, no marquee — just a straight pan.
-        if (effectiveCanvasTool(useUIStore.getState()) === 'hand') {
-          if (cancelInertia.current) {
-            cancelInertia.current()
-            cancelInertia.current = null
-          }
-          isPanning.current = true
-          panButton.current = 0
-          lastPanPos.current = { x: e.clientX, y: e.clientY }
-          if (canvasRef.current) {
-            canvasRef.current.style.cursor = 'grabbing'
-          }
-          document.body.classList.add('canvas-interacting')
+        // Hand tool: left-drag pans the canvas, even when the press lands on a
+        // node (nodes let the event bubble here under Hand). No context menu, no
+        // inertia, no marquee — just a straight pan.
+        if (useUIStore.getState().activeTool === 'hand') {
+          startPanDrag(0, e.clientX, e.clientY)
           e.preventDefault()
           return
         }
@@ -415,8 +415,13 @@ export function useCanvasInteraction(
           const rect = canvasRef.current?.getBoundingClientRect()
           if (!rect) return
           const { zoomLevel, viewportOffset } = canvasStoreApi.getState()
-          const startCanvasX = (e.clientX - rect.left - viewportOffset.x) / zoomLevel
-          const startCanvasY = (e.clientY - rect.top - viewportOffset.y) / zoomLevel
+          const startCanvas = viewToCanvas(
+            { x: e.clientX - rect.left, y: e.clientY - rect.top },
+            zoomLevel,
+            viewportOffset,
+          )
+          const startCanvasX = startCanvas.x
+          const startCanvasY = startCanvas.y
 
           const startClientX = e.clientX
           const startClientY = e.clientY
@@ -434,8 +439,13 @@ export function useCanvasInteraction(
               const { zoomLevel: z, viewportOffset: vo } = canvasStoreApi.getState()
               const r = canvasRef.current?.getBoundingClientRect()
               if (!r) return
-              const currentCanvasX = (ev.clientX - r.left - vo.x) / z
-              const currentCanvasY = (ev.clientY - r.top - vo.y) / z
+              const currentCanvas = viewToCanvas(
+                { x: ev.clientX - r.left, y: ev.clientY - r.top },
+                z,
+                vo,
+              )
+              const currentCanvasX = currentCanvas.x
+              const currentCanvasY = currentCanvas.y
               useUIStore.getState().setMarquee({
                 startX: startCanvasX,
                 startY: startCanvasY,
@@ -495,7 +505,7 @@ export function useCanvasInteraction(
         }
       }
     },
-    [canvasRef],
+    [canvasRef, startPanDrag],
   )
 
   const handleMouseMove = useCallback(
@@ -567,8 +577,7 @@ export function useCanvasInteraction(
         lastPanPos.current = null
         rightClickStart.current = null
         if (canvasRef.current) {
-          // Hand back to React's idle cursor for the now-effective tool (Space
-          // may have been released mid-pan, reverting to the underlying tool).
+          // Hand back to React's idle cursor for the active tool.
           canvasRef.current.style.cursor = idleCursorForTool()
         }
         document.body.classList.remove('canvas-interacting')

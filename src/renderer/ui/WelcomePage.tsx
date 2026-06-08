@@ -15,6 +15,7 @@ import { abbreviateLocalPath, workspaceDisplayName } from '../lib/fs/displayPath
 import { parseLocator, LOCAL_COMPANION_ID } from '../../main/companion/locator'
 import { RemoteConnectDialog } from '../dialogs/RemoteConnectDialog'
 import { workspaceRuntime } from '../lib/workspace/workspaceRuntime'
+import { isWorkspaceEffectivelyEmpty } from '../lib/workspace/session'
 import type { RemoteConnectSpec } from '../../shared/types'
 
 // Abbreviate home directory in paths
@@ -35,9 +36,13 @@ export default function WelcomePage({ workspaceId }: { workspaceId: string }) {
         setShowRemote(false)
         // The workspace is registered; the probe drives its phase. Only spawn a
         // terminal if it actually connected — otherwise the canvas lock shows
-        // the probed state (missing → Install, unreachable → Retry/Edit).
+        // the probed state (missing → Install, unreachable → Retry/Edit). Skip it
+        // when connect restored a saved .cate/ layout, so we don't stack a stray
+        // terminal on top of the restored panels.
         const ws = useAppStore.getState().workspaces.find((w) => w.id === workspaceId)
-        if (workspaceRuntime(ws).editable) app.createTerminal(workspaceId)
+        if (workspaceRuntime(ws).editable && isWorkspaceEffectivelyEmpty(workspaceId)) {
+          app.createTerminal(workspaceId)
+        }
       } else {
         const ws = useAppStore.getState().workspaces.find((w) => w.id === workspaceId)
         setRemoteError(ws?.companion?.error ?? 'Failed to connect')
@@ -55,14 +60,16 @@ export default function WelcomePage({ workspaceId }: { workspaceId: string }) {
     if (!path) return
     const app = useAppStore.getState()
     const ok = await app.setWorkspaceRootPath(workspaceId, path)
-    if (ok) app.createTerminal(workspaceId)
+    // Skip the starter terminal if a saved .cate/ layout was just restored.
+    if (ok && isWorkspaceEffectivelyEmpty(workspaceId)) app.createTerminal(workspaceId)
   }, [workspaceId])
 
   const openRecentProject = useCallback(
     async (path: string) => {
       const app = useAppStore.getState()
       const ok = await app.setWorkspaceRootPath(workspaceId, path)
-      if (ok) app.createTerminal(workspaceId)
+      // Skip the starter terminal if a saved .cate/ layout was just restored.
+      if (ok && isWorkspaceEffectivelyEmpty(workspaceId)) app.createTerminal(workspaceId)
     },
     [workspaceId],
   )

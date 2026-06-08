@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Star, GithubLogo, Envelope, ArrowSquareOut } from '@phosphor-icons/react'
 import heroImg from '../assets/dialog-hero.jpg'
+import { useEscapeKey } from '../lib/hooks/useEscapeKey'
 
 type Payload = { fromVersion: string; toVersion: string }
 
@@ -87,14 +88,7 @@ export function PostUpdateFeedbackDialog() {
     }
   }, [rating, comment, sending])
 
-  useEffect(() => {
-    if (!payload) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); close() }
-    }
-    document.addEventListener('keydown', handler, { capture: true })
-    return () => document.removeEventListener('keydown', handler, { capture: true })
-  }, [payload, close])
+  useEscapeKey(payload !== null, close)
 
   if (!payload) return null
 

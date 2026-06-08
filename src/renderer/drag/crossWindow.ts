@@ -131,6 +131,44 @@ function runRemoteEffects(active: ActiveRemote, state: RuntimeState): void {
   }
 }
 
+/** Build the host's remote-drop callback. The shared logic is identical across
+ *  windows — refuse canvas-on-canvas cross-window drops, then place the panel
+ *  on the resolved dock or canvas target. The ONLY per-window difference is the
+ *  add-panel step (workspace `addPanel` vs dock window `ensurePanelsInAppStore`)
+ *  and the hydrate that precedes it, so callers pass that as `addPanelStep`. */
+export function createRemoteDropHandler(opts: {
+  addPanelStep: (snapshot: PanelTransferSnapshot) => void
+}): RemoteDropHandler {
+  return (snapshot, target) => {
+    // Canvas-on-canvas is unsupported: refuse cross-window drops of a
+    // canvas panel onto a canvas target. The source window stays as-is.
+    if (snapshot.panel.type === 'canvas' && target.kind !== 'dock') return
+
+    // Deposit PTY hand-off + hydrate canvas children + register the panel
+    // before it mounts (per-window: addPanel vs ensurePanelsInAppStore).
+    opts.addPanelStep(snapshot)
+
+    if (target.kind === 'dock') {
+      const dockTarget = target.target
+      target.dockStoreApi.getState().dockPanel(
+        snapshot.panel.id,
+        dockTarget.type === 'zone' ? dockTarget.zone : 'center',
+        dockTarget,
+      )
+    } else {
+      const canvasState = target.canvasStoreApi.getState()
+      const newNodeId = canvasState.addNode(
+        snapshot.panel.id,
+        snapshot.panel.type,
+        target.origin,
+        target.size,
+      )
+      target.canvasStoreApi.getState().resizeNode(newNodeId, target.size)
+      target.canvasStoreApi.getState().focusNode(newNodeId)
+    }
+  }
+}
+
 /** Wire cross-window drag IPC for this window's lifecycle. Returns a cleanup.
  *  `onDrop` is the host's window-local registration callback (e.g. addPanel
  *  into a workspace, or setPanels for a dock window). It fires for both

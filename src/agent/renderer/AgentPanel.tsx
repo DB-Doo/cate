@@ -759,8 +759,9 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
     if (!activeAgentKey) return
     const key = activeAgentKey
     try {
+      // The cate-plan-mode extension clears plan mode and starts the implement
+      // turn itself (via a custom message), so there's no synthetic user prompt.
       await window.electronAPI.agentPrompt(key, '/apply-plan')
-      await window.electronAPI.agentPrompt(key, 'Now execute the plan above.')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       useAgentStore.getState().appendSystem(key, `Implement failed: ${msg}`, 'error')
@@ -784,8 +785,9 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
       useAgentStore.getState().setCompaction(key, { active: true, reason: 'manual' })
       await window.electronAPI.agentCompact(key)
       useAgentStore.getState().setCompaction(key, { active: false })
-      await window.electronAPI.agentPrompt(key, '/apply-plan')
-      await window.electronAPI.agentPrompt(key, 'Now execute the plan above.')
+      // 'fresh' tells the extension to restate the full plan: compaction dropped
+      // the original plan_complete call from context.
+      await window.electronAPI.agentPrompt(key, '/apply-plan fresh')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       useAgentStore.getState().appendSystem(key, `Clear & implement failed: ${msg}`, 'error')

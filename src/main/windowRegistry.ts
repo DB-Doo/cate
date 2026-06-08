@@ -74,6 +74,8 @@ export function registerWindow(win: BrowserWindow, type: CateWindowType = 'main'
     dockWindowState.delete(win.id)
     windowWorkspaceId.delete(win.id)
     if (lastFocusedMainWindowId === win.id) lastFocusedMainWindowId = null
+    // The windowClosedHandlers above include windowPanels, which drops this
+    // window from the cross-window union and rebroadcasts it.
   })
 }
 
@@ -292,3 +294,8 @@ export function listDockWindows(): Array<{
   }
   return result
 }
+
+// The cross-window panel discovery union (flatten/broadcast/reveal) lives in
+// ./windowPanels — windows report their panels to it directly (WINDOW_PANELS_REPORT)
+// and it subscribes to onWindowClosed here, keeping this module free of it. The
+// dock/panel state above is now purely for session persistence.

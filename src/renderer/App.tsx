@@ -12,28 +12,19 @@ import { DockStoreProvider } from './stores/DockStoreContext'
 import { getOrCreateWorkspaceDockStore } from './lib/workspace/dockRegistry'
 import { useStore } from 'zustand'
 import { useSettingsStore } from './stores/settingsStore'
-import { useUIStore } from './stores/uiStore'
 import { useUIStateStore } from './stores/uiStateStore'
 import { workspaceDisplayName } from './lib/fs/displayPath'
 import { useFileDropTracker, FileDropOverlay } from './drag/fileDropTarget'
-import { useShortcuts } from './hooks/useShortcuts'
 import { useProcessMonitor } from './hooks/useProcessMonitor'
-import {
-  startAgentScreenDetector,
-  stopAgentScreenDetector,
-  applyRemoteAgentScreenState,
-} from './lib/agent/agentScreenDetector'
-import type { AgentState } from '../shared/types'
 import { Sidebar, RightSidebar } from './sidebar/Sidebar'
 import { renderPanelComponent, PANEL_REGISTRY } from './panels/registry'
 const CanvasPanel = PANEL_REGISTRY.canvas.Component
-import { NodeSwitcher } from './ui/NodeSwitcher'
-import { CommandPalette } from './ui/CommandPalette'
 import { CompanionLockOverlay } from './ui/CompanionLockOverlay'
-import { SettingsWindow } from './settings/SettingsWindow'
+import WindowChrome from './shells/WindowChrome'
 import { SavedLayoutsDialog } from './dialogs/SavedLayoutsDialog'
 import { SkillsDialog } from './dialogs/SkillsDialog'
 import { PostUpdateFeedbackDialog } from './dialogs/PostUpdateFeedbackDialog'
+import { UpdateReadyDialog } from './dialogs/UpdateReadyDialog'
 import { WelcomeDialog } from './dialogs/WelcomeDialog'
 import { OnboardingTour } from './onboarding/OnboardingTour'
 import PerfHud from './ui/PerfHud'
@@ -47,11 +38,10 @@ import DockWindowShell from './shells/DockWindowShell'
 import TitlebarStrip from './shells/TitlebarStrip'
 import { WindowTypeContext } from './stores/WindowTypeContext'
 import { setupCrossWindowDragListeners } from './drag'
+import { createRemoteDropHandler } from './drag/crossWindow'
 import { hydrateReceivedPanel } from './lib/panelTransfer'
-import { applyTheme } from './lib/themeManager'
-import { applyUiScale } from './lib/uiScale'
+import { useWindowRuntime } from './lib/hooks/useWindowRuntime'
 import { closePanelWithConfirm } from './lib/closePanelWithConfirm'
-import { isExternalFileDrag } from './lib/fs/importExternalEntries'
 import pkg from '../../package.json'
 
 // -----------------------------------------------------------------------------
@@ -96,11 +86,13 @@ export default function App() {
   // Panel windows get a lightweight shell — no canvas, no dock zones (legacy)
   if (windowParams.type === 'panel') {
     return (
-      <PanelWindowShell
-        panelType={windowParams.panelType}
-        panelId={windowParams.panelId}
-        workspaceId={windowParams.workspaceId}
-      />
+      <WindowTypeContext.Provider value="panel">
+        <PanelWindowShell
+          panelType={windowParams.panelType}
+          panelId={windowParams.panelId}
+          workspaceId={windowParams.workspaceId}
+        />
+      </WindowTypeContext.Provider>
     )
   }
 
@@ -116,10 +108,6 @@ export default function App() {
 // -----------------------------------------------------------------------------
 
 function MainApp() {
-  const showSettings = useUIStore((s) => s.showSettings)
-  const settingsInitialTab = useUIStore((s) => s.settingsInitialTab)
-  const openSettings = useUIStore((s) => s.openSettings)
-  const closeSettings = useUIStore((s) => s.closeSettings)
   const [initializing, setInitializing] = useState(true)
   const initializedRef = useRef(false)
   // Guards against stacking reload-confirm dialogs when the detector re-fires.
@@ -142,24 +130,11 @@ function MainApp() {
     ? getOrCreateWorkspaceDockStore(selectedWorkspaceId)
     : useDockStore
   const activeCanvasStore = getWorkspaceCanvasStore(selectedWorkspaceId) ?? useCanvasStore
-  const showNodeSwitcher = useUIStore((s) => s.showNodeSwitcher)
-  const showCommandPalette = useUIStore((s) => s.showCommandPalette)
 
-  // Theme — apply on mount and re-apply whenever the selection, the custom-theme
-  // list, or the system light/dark mapping changes (so imports/edits go live).
-  const activeThemeId = useSettingsStore((s) => s.activeThemeId)
-  const customThemes = useSettingsStore((s) => s.customThemes)
-  const systemLightThemeId = useSettingsStore((s) => s.systemLightThemeId)
-  const systemDarkThemeId = useSettingsStore((s) => s.systemDarkThemeId)
-  useEffect(() => {
-    applyTheme(activeThemeId)
-  }, [activeThemeId, customThemes, systemLightThemeId, systemDarkThemeId])
-
-  // Global UI scale — re-apply whenever the setting changes (and on mount).
-  const uiScale = useSettingsStore((s) => s.uiScale)
-  useEffect(() => {
-    applyUiScale(uiScale)
-  }, [uiScale])
+  // Shared window runtime — theme/scale, settings load, keyboard shortcuts,
+  // agent-screen detector, Cmd+, settings toggle, and the external-file-drop
+  // guard. Every window type mounts this; main-only behavior stays below.
+  useWindowRuntime()
 
   // E2E test harness — exposes window.__cateE2E only when launched by Playwright.
   useEffect(() => {
@@ -173,26 +148,8 @@ function MainApp() {
     initPerfClient()
   }, [])
 
-  // Global hooks
-  useShortcuts()
+  // Main-only: terminal/agent activity → status bar + worktree sync.
   useProcessMonitor(selectedWorkspaceId)
-
-  // The agent-screen detector inspects each terminal's xterm buffer for prompt
-  // markers and reports the result via IPC. The unsubscribe handler also
-  // applies state broadcast from other windows, so detached panel windows keep
-  // the main-window sidebar in sync.
-  useEffect(() => {
-    startAgentScreenDetector()
-    const off = window.electronAPI?.onAgentScreenStateUpdate?.(
-      (terminalId: string, state: AgentState) => {
-        applyRemoteAgentScreenState(terminalId, state)
-      },
-    )
-    return () => {
-      stopAgentScreenDetector()
-      off?.()
-    }
-  }, [])
 
   // Sync the OS window title to the active workspace name. On macOS this is
   // what each native tab in the title bar displays, so the user can tell
@@ -320,16 +277,6 @@ function MainApp() {
   }, [centerLayout, selectedWorkspaceId])
 
   // ---------------------------------------------------------------------------
-  // Settings window (Cmd+, via native menu)
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    return window.electronAPI.onMenuOpenSettings(() => {
-      if (useUIStore.getState().showSettings) closeSettings()
-      else openSettings()
-    })
-  }, [openSettings, closeSettings])
-
-  // ---------------------------------------------------------------------------
   // OS-forwarded folder opens — dock drop / "Open With Cate"
   // ---------------------------------------------------------------------------
   useEffect(() => {
@@ -385,59 +332,16 @@ function MainApp() {
   // Cross-window drag support — accept panels dragged from dock windows
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    return setupCrossWindowDragListeners((snapshot, target) => {
-      // Canvas-on-canvas is unsupported: refuse cross-window drops of a
-      // canvas panel onto a canvas target. The source window stays as-is.
-      if (snapshot.panel.type === 'canvas' && target.kind !== 'dock') return
-
-      const wsId = useAppStore.getState().selectedWorkspaceId
-
-      // Deposit PTY hand-off + hydrate canvas children before the panel mounts.
-      hydrateReceivedPanel(wsId, snapshot)
-
-      useAppStore.getState().addPanel(wsId, snapshot.panel)
-
-      if (target.kind === 'dock') {
-        const dockTarget = target.target
-        target.dockStoreApi.getState().dockPanel(
-          snapshot.panel.id,
-          dockTarget.type === 'zone' ? dockTarget.zone : 'center',
-          dockTarget,
-        )
-      } else {
-        const canvasState = target.canvasStoreApi.getState()
-        const newNodeId = canvasState.addNode(
-          snapshot.panel.id,
-          snapshot.panel.type,
-          target.origin,
-          target.size,
-        )
-        target.canvasStoreApi.getState().resizeNode(newNodeId, target.size)
-        target.canvasStoreApi.getState().focusNode(newNodeId)
-      }
-    })
-  }, [])
-
-  // ---------------------------------------------------------------------------
-  // Swallow stray EXTERNAL (OS) file drops on the app background so Chromium
-  // doesn't navigate to the file:// URL. The file explorer handles its own
-  // external drops (copy/move into a directory) and stops propagation, so those
-  // never reach here. We deliberately do NOT re-root the workspace on drop.
-  //
-  // Crucially, this only engages for external file drags. Internal drags
-  // (workspace reorder, file-tree moves, sidebar/panel drags) bubble up to this
-  // root element too — touching their dropEffect here would override the inner
-  // handler's effect and make the browser reject the drop (onDrop never fires).
-  // ---------------------------------------------------------------------------
-  const handleFileDragOver = useCallback((e: React.DragEvent) => {
-    if (!isExternalFileDrag(e)) return
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'none'
-  }, [])
-
-  const handleFileDrop = useCallback((e: React.DragEvent) => {
-    if (!isExternalFileDrag(e)) return
-    e.preventDefault()
+    return setupCrossWindowDragListeners(
+      createRemoteDropHandler({
+        addPanelStep: (snapshot) => {
+          const wsId = useAppStore.getState().selectedWorkspaceId
+          // Deposit PTY hand-off + hydrate canvas children before the panel mounts.
+          hydrateReceivedPanel(wsId, snapshot)
+          useAppStore.getState().addPanel(wsId, snapshot.panel)
+        },
+      }),
+    )
   }, [])
 
   // ---------------------------------------------------------------------------
@@ -514,11 +418,7 @@ function MainApp() {
 
   return (
     <CanvasStoreProvider store={activeCanvasStore}>
-    <div
-      className="h-screen w-screen flex flex-col bg-canvas-bg"
-      onDragOver={handleFileDragOver}
-      onDrop={handleFileDrop}
-    >
+    <div className="h-screen w-screen flex flex-col bg-canvas-bg">
       <TitlebarStrip />
       <div className="relative flex-1 min-h-0 min-w-0">
       {/* Layout row: left sidebar | shell | right sidebar. The sidebars are real
@@ -556,17 +456,16 @@ function MainApp() {
       {/* Single shared file-drag drop indicator (canvas / dock / agent) */}
       <FileDropOverlay />
 
-      {/* Modal overlays */}
-      {showNodeSwitcher && <NodeSwitcher />}
-      {showCommandPalette && <CommandPalette />}
-      {showSettings && (
-        <SettingsWindow isOpen={showSettings} onClose={closeSettings} initialTab={settingsInitialTab ?? undefined} />
-      )}
+      {/* Shared overlay chrome (command palette + settings + drag overlay) */}
+      <WindowChrome />
+
+      {/* Main-only modal overlays */}
       <SavedLayoutsDialog />
       <SkillsDialog />
       <WelcomeDialog />
       <OnboardingTour />
       <PostUpdateFeedbackDialog />
+      <UpdateReadyDialog />
       <PerfHud />
 
       {initializing && (
