@@ -242,7 +242,7 @@ export interface CompanionRuntime {
 }
 
 export interface WorkspaceMutationError {
-  code: 'INVALID_ROOT_PATH' | 'INVALID_WORKSPACE_ID' | 'WORKSPACE_NOT_FOUND'
+  code: 'INVALID_ROOT_PATH' | 'INVALID_WORKSPACE_ID' | 'WORKSPACE_NOT_FOUND' | 'DUPLICATE_ROOT'
   message: string
 }
 
