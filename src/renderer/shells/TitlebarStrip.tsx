@@ -20,8 +20,7 @@
 
 import { useEffect, useState } from 'react'
 import WindowControls from './WindowControls'
-
-const IS_MAC = navigator.userAgent.includes('Mac')
+import { IS_MAC } from '../lib/platform'
 
 // Drawn application menu bar for the frameless Windows/Linux title bar. Reads the
 // top-level labels from main and pops the real native submenu under each label,

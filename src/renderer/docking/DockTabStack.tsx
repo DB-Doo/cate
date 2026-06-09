@@ -72,6 +72,7 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
       stackId: stack.id,
       getRect: () =>
         dropDisabledRef.current ? null : stackRef.current?.getBoundingClientRect() ?? null,
+      getElement: () => stackRef.current,
       dockStoreApi,
       acceptsPanelType,
     })
@@ -109,7 +110,6 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
     onPanelRenamed,
     excludePanelTypes,
     localOnly,
-    activePanel,
   })
 
   // Main-dock tab drag (canvas-node mini-docks route through onTabBarMouseDown).

@@ -56,6 +56,35 @@ describe('createTransferSnapshot — editor content survival', () => {
   })
 })
 
+describe('createTransferSnapshot — worktree registry threading', () => {
+  it('stamps the carried worktrees onto the snapshot so the receiver can tint pills', () => {
+    const panel: PanelState = { id: 'p-1', type: 'terminal', title: 'zsh', isDirty: false, worktreeId: 'wt-b' }
+    const wts = [
+      { id: 'wt-a', path: '/repo', color: '#111111' },
+      { id: 'wt-b', path: '/repo/.cate/worktrees/b', color: '#22aa55' },
+    ]
+    const snapshot = createTransferSnapshot(
+      panel,
+      { type: 'dock', zone: 'center', stackId: 's-1' },
+      { origin: { x: 0, y: 0 }, size: { width: 600, height: 400 } },
+      { worktrees: wts },
+    )
+    expect(snapshot.worktrees).toEqual(wts)
+  })
+
+  it('leaves worktrees undefined when none (or an empty list) are carried', () => {
+    const panel: PanelState = { id: 'p-2', type: 'terminal', title: 'zsh', isDirty: false }
+    const base = createTransferSnapshot(panel, { type: 'dock', zone: 'center', stackId: 's-1' }, {
+      origin: { x: 0, y: 0 }, size: { width: 600, height: 400 },
+    })
+    expect(base.worktrees).toBeUndefined()
+    const empty = createTransferSnapshot(panel, { type: 'dock', zone: 'center', stackId: 's-1' }, {
+      origin: { x: 0, y: 0 }, size: { width: 600, height: 400 },
+    }, { worktrees: [] })
+    expect(empty.worktrees).toBeUndefined()
+  })
+})
+
 describe('createTransferSnapshot — canvas children survival', () => {
   it('captures the canvas store nodes + viewport + child PanelState', () => {
     const panel: PanelState = { id: 'panel-canvas-1', type: 'canvas', title: 'Sub-canvas', isDirty: false }
@@ -149,10 +178,11 @@ describe('depositCanvasChildTransfers — receiver reconnect', () => {
     expect(setPendingTransfer).not.toHaveBeenCalled()
   })
 
-  // Cold restore: a child terminal carries `replayPtyId` (its dead PTY) instead
-  // of a live `ptyId`, so the receiver must seed terminalRestoreData to spawn a
-  // fresh PTY and replay that log — NOT reconnect via setPendingTransfer.
-  it('seeds terminalRestoreData for replayPtyId children and reconnects ptyId ones', () => {
+  // depositCanvasChildTransfers handles LIVE transfers only: a child terminal
+  // with a live `ptyId` reconnects via setPendingTransfer. Cold restore does NOT
+  // flow through here — the shell arms replay for every terminal panel by its
+  // stable panelId, so depositCanvasChildTransfers must not touch terminalRestoreData.
+  it('reconnects live ptyId children and leaves terminalRestoreData alone', () => {
     terminalRestoreData.clear()
     depositCanvasChildTransfers({
       nodes: {},
@@ -161,14 +191,10 @@ describe('depositCanvasChildTransfers — receiver reconnect', () => {
       childPanels: {},
       childTerminals: {
         live: { ptyId: 'pty-live', scrollback: 'LL' },
-        dead: { replayPtyId: 'pty-dead' },
       },
     })
 
-    // Live entry reconnects; restore entry replays.
     expect(setPendingTransfer).toHaveBeenCalledWith('live', 'pty-live', 'LL')
-    expect(setPendingTransfer).not.toHaveBeenCalledWith('dead', expect.anything(), expect.anything())
-    expect(terminalRestoreData.get('dead')).toEqual({ replayFromId: 'pty-dead' })
     expect(terminalRestoreData.has('live')).toBe(false)
     terminalRestoreData.clear()
   })

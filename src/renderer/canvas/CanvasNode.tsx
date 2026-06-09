@@ -13,11 +13,11 @@ import type { NodeActivityState, DockLayoutNode, PanelType } from '../../shared/
 import { isMaximized as checkMaximized } from '../../shared/types'
 import { useCanvasStoreContext, useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import { useAppStore, useSelectedWorkspace } from '../stores/appStore'
-import { useUIStore, effectiveCanvasTool } from '../stores/uiStore'
+import { useUIStore } from '../stores/uiStore'
 import { useDragStore, useDragSourceVisibility } from '../drag'
 import { useNodeResize } from '../hooks/useNodeResize'
 import { useCanvasNodeStyle } from './useCanvasNodeStyle'
-import { useCanvasNodeDrag, countPanels } from './useCanvasNodeDrag'
+import { useCanvasNodeDrag } from './useCanvasNodeDrag'
 import { useNodeResizeCursor } from './useNodeResizeCursor'
 import { NodeResizeOverlay } from './NodeResizeOverlay'
 import type { DockStore } from '../stores/dockStore'
@@ -28,16 +28,17 @@ import { setActivePanel } from '../lib/activePanel'
 import DockSplitContainer from '../docking/DockSplitContainer'
 import { confirmCloseDirtyPanels } from '../lib/confirmCloseDirty'
 import { confirmCloseRunningTerminals } from '../lib/confirmCloseTerminal'
+import { collectPanelIds } from '../lib/canvas/collectPanelIds'
 import { ArrowsOutSimple, ArrowsInSimple, X, Lock, LockOpen } from '@phosphor-icons/react'
 import { PANEL_DEFINITIONS } from '../../shared/panels'
 
-// When the Hand tool (or Space-hold) is active, a left-press on a node must pan
+// When the Hand tool is active, a left-press on a node must pan
 // the canvas instead of dragging/resizing the node. These handlers bail out
 // (without stopping propagation) so the event bubbles to the canvas container's
 // pan handler. Focused interactive content (terminal/monaco/webview) is handled
 // separately by the `canvas-tool-hand` body class (see Canvas.tsx).
 function handToolPanShouldWin(e: React.MouseEvent): boolean {
-  return e.button === 0 && effectiveCanvasTool(useUIStore.getState()) === 'hand'
+  return e.button === 0 && useUIStore.getState().activeTool === 'hand'
 }
 
 // -----------------------------------------------------------------------------
@@ -187,7 +188,7 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
   const handleHeaderMouseDown = useCallback((e: React.MouseEvent, panelId?: string) => {
     if (handToolPanShouldWin(e)) return
     if (panelId) {
-      const total = countPanels(dockStoreApi.getState().zones.center.layout)
+      const total = collectPanelIds(dockStoreApi.getState().zones.center.layout).length
       if (total > 1) {
         handleTabDetachStart(e, panelId)
         return
@@ -271,14 +272,6 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
 
   const getPanel = useCallback((panelId: string) => resolvePanel(panelId), [resolvePanel])
 
-  const collectPanelIds = useCallback((n: DockLayoutNode | null): string[] => {
-    if (!n) return []
-    if (n.type === 'tabs') return [...n.panelIds]
-    const out: string[] = []
-    for (const child of n.children) out.push(...collectPanelIds(child))
-    return out
-  }, [])
-
   const confirmCloseForPanels = useCallback(
     async (panelIds: string[]): Promise<boolean> => {
       const ws = useAppStore.getState().workspaces.find((w) => w.id === wsId)
@@ -309,7 +302,7 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
       useAppStore.getState().closePanel(wsId, panelId)
     }
     removeNode(nodeId)
-  }, [removeNode, nodeId, layout, collectPanelIds, confirmCloseForPanels, wsId])
+  }, [removeNode, nodeId, layout, confirmCloseForPanels, wsId])
 
   const handleToggleMaximize = useCallback(() => {
     setIsAnimatingLayout(true)
@@ -500,8 +493,8 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (wasDragged.current) return
-      // Hand tool (or Space-hold): clicks pan/move only — never select.
-      if (effectiveCanvasTool(useUIStore.getState()) === 'hand') return
+      // Hand tool: clicks pan/move only — never select.
+      if (useUIStore.getState().activeTool === 'hand') return
       if (e.shiftKey) {
         canvasApi.getState().toggleNodeSelection(nodeId)
         return

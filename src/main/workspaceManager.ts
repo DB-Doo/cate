@@ -15,7 +15,7 @@ import {
   WORKSPACE_CHANGED,
 } from '../shared/ipc-channels'
 import type { WorkspaceInfo, WorkspaceMutationResult } from '../shared/types'
-import { broadcastToAll, windowFromEvent } from './windowRegistry'
+import { broadcastToAll, windowFromEvent, closeWindowsForWorkspace } from './windowRegistry'
 import { addAllowedRoot, removeAllowedRoot } from './ipc/pathValidation'
 import { resolveTrustedWorkspaceRoot } from './workspaceRoots'
 import { acquireProjectLock, releaseProjectLock } from './projectLock'
@@ -271,6 +271,9 @@ export function registerWorkspaceHandlers(): void {
 
   // Remove a workspace
   ipcMain.handle(WORKSPACE_REMOVE, async (event, id: string) => {
+    // Closing a workspace tab also closes its detached (dock) windows — they
+    // belong to the workspace and have no home once it's gone.
+    closeWindowsForWorkspace(id)
     const removed = removeWorkspace(id)
     if (removed) {
       const win = windowFromEvent(event)

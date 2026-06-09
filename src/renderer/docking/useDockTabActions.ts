@@ -26,13 +26,12 @@ export interface DockTabActionsParams {
   onPanelRenamed?: (panelId: string, title: string) => void
   excludePanelTypes?: PanelType[]
   localOnly?: boolean
-  activePanel: PanelState | undefined
 }
 
 export function useDockTabActions(params: DockTabActionsParams) {
   const {
     stack, zone, dockStoreApi, workspaceId, getPanelProp,
-    onClosePanel, onPanelRemoved, onPanelRenamed, excludePanelTypes, localOnly, activePanel,
+    onClosePanel, onPanelRemoved, onPanelRenamed, excludePanelTypes, localOnly,
   } = params
 
   const setActiveTab = useCallback((stackId: string, index: number) => {
@@ -92,6 +91,7 @@ export function useDockTabActions(params: DockTabActionsParams) {
           // renders them as generic "Panel" stubs (mirrors the drag path).
           resolveChildPanel: (childId: string) => sourceWs?.panels[childId],
           workspaceRootPath: sourceWs?.rootPath || undefined,
+          worktrees: sourceWs?.worktrees,
         },
       )
       // Detach FIRST — only tear down the source once the new window actually
@@ -118,11 +118,9 @@ export function useDockTabActions(params: DockTabActionsParams) {
       const placement: import('../stores/appStore').PanelPlacement = localOnly
         ? { target: 'none' }
         : { target: 'dock', zone }
-      const filePath =
-        activePanel?.type === 'editor' && !activePanel.diffMode ? activePanel.filePath : undefined
-      return getPanelDef(type).create({ workspaceId: wsId, placement, filePath })
+      return getPanelDef(type).create({ workspaceId: wsId, placement })
     },
-    [activePanel, workspaceId, zone, localOnly],
+    [workspaceId, zone, localOnly],
   )
 
   const addTabOfType = useCallback(

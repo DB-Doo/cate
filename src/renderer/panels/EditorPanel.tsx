@@ -405,11 +405,10 @@ export default function EditorPanel({
       // the single source of truth for the editor model when the prop
       // does flip (main window).
       useAppStore.getState().setPanelUnsavedContent(workspaceId, panelId, undefined)
-      // Notify the surrounding shell (DockWindowShell / PanelWindowShell)
-      // so its local `panels` state — which feeds session sync and close
-      // prompts in detached windows — picks up the new filePath, title,
-      // and clean dirty flag. The main window ignores this event because
-      // it reads from appStore directly.
+      // Notify the surrounding detached/dock shell (DockWindowShell) so its
+      // session sync — which feeds persistence and close prompts in detached
+      // windows — flushes the new filePath, title, and clean dirty flag. The
+      // main window ignores this event because it reads from appStore directly.
       window.dispatchEvent(
         new CustomEvent('editor:panel-saved-as', {
           detail: { panelId, filePath: targetPath, title: fileName },
