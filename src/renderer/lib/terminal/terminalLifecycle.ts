@@ -24,6 +24,8 @@ import {
   type RegistryEntry,
 } from './registryState'
 import {
+  getTerminalFontFamily,
+  getTerminalBaseFontSize,
   getScrollback,
   getScrollSensitivity,
   getContrastRatio,
@@ -103,8 +105,8 @@ export function createAndConfigureXtermTerminal(opts: CreateOpts): ConfiguredTer
 
   const terminal = new Terminal({
     theme: getActiveTheme().terminal,
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    fontSize: 13,
+    fontFamily: getTerminalFontFamily(),
+    fontSize: getTerminalBaseFontSize(),
     cursorBlink: effectiveCursorBlink(),
     allowProposedApi: true,
     scrollback: getScrollback(),

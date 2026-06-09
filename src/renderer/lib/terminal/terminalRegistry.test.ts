@@ -18,6 +18,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const events: string[] = []
 beforeEach(() => { events.length = 0 })
 
+const settingsState = {
+  terminalFontFamily: '',
+  terminalFontSize: 0,
+  terminalScrollback: 2000,
+  terminalCursorBlink: false,
+  terminalScrollSpeed: 1.0,
+  terminalContrast: 4.5,
+  terminalOptionIsMeta: true,
+}
+
 vi.mock('@xterm/xterm', () => {
   // Faithful-enough fake: models the buffer viewportY/baseY scroll indices and
   // a real `.xterm-viewport` DOM child (so the registry's scroll listener and
@@ -25,11 +35,14 @@ vi.mock('@xterm/xterm', () => {
   // scrollToBottom mutate viewportY the way xterm does.
   class FakeTerminal {
     public writes: string[] = []
-    public options: { theme?: unknown } = {}
+    public options: Record<string, unknown>
     public buffer = { active: { baseY: 0, cursorY: 0, viewportY: 0, getLine: () => undefined } }
     public element: HTMLElement | undefined
     public cols = 80
     public rows = 24
+    constructor(options: Record<string, unknown> = {}) {
+      this.options = options
+    }
     loadAddon(): void { /* no-op */ }
     open(container: HTMLElement): void {
       this.element = document.createElement('div')
@@ -79,12 +92,7 @@ vi.mock('../../stores/statusStore', () => ({
 }))
 vi.mock('../../stores/settingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({
-      terminalScrollback: 2000,
-      terminalCursorBlink: false,
-      terminalScrollSpeed: 1.0,
-      terminalContrast: 4.5,
-    }),
+    getState: () => settingsState,
     subscribe: () => () => {},
   },
 }))
@@ -113,6 +121,13 @@ const panelTransferAck = vi.fn(async (_id: string) => undefined as undefined)
 const shellRegisterTerminal = vi.fn(async () => undefined)
 
 beforeEach(() => {
+  settingsState.terminalFontFamily = ''
+  settingsState.terminalFontSize = 0
+  settingsState.terminalScrollback = 2000
+  settingsState.terminalCursorBlink = false
+  settingsState.terminalScrollSpeed = 1.0
+  settingsState.terminalContrast = 4.5
+  settingsState.terminalOptionIsMeta = true
   terminalCreate.mockClear()
   panelTransferAck.mockClear()
   shellRegisterTerminal.mockClear()
@@ -134,6 +149,32 @@ beforeEach(() => {
       settingsGet: vi.fn(async () => ''),
       panelTransferAck,
     },
+  })
+})
+
+describe('terminal font settings', () => {
+  it('passes default terminal font settings to xterm', async () => {
+    const { terminalRegistry } = await import('./terminalRegistry')
+
+    const entry = await terminalRegistry.getOrCreate('panel-font-defaults', { workspaceId: 'ws-1' })
+
+    expect(entry.terminal.options.fontFamily).toBe('Menlo, Monaco, "Courier New", monospace')
+    expect(entry.terminal.options.fontSize).toBe(13)
+
+    terminalRegistry.dispose('panel-font-defaults')
+  })
+
+  it('passes configured terminal font settings to xterm', async () => {
+    settingsState.terminalFontFamily = "'Hack Nerd Font Mono','Segoe UI'"
+    settingsState.terminalFontSize = 16
+    const { terminalRegistry } = await import('./terminalRegistry')
+
+    const entry = await terminalRegistry.getOrCreate('panel-font-custom', { workspaceId: 'ws-1' })
+
+    expect(entry.terminal.options.fontFamily).toBe("'Hack Nerd Font Mono','Segoe UI'")
+    expect(entry.terminal.options.fontSize).toBe(16)
+
+    terminalRegistry.dispose('panel-font-custom')
   })
 })
 
