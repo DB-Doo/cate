@@ -11,26 +11,38 @@ import { registry, has, type RegistryEntry } from './registryState'
 import { finalizeReconnect } from './terminalLifecycle'
 
 /**
- * Force the WebGL renderer to rebuild its glyph atlas and redraw every cell.
+ * Rebuild the WebGL glyph atlas and force a full redraw — across EVERY live
+ * terminal in this window, not just the one named by panelId.
  *
- * A detached window is created hidden (show:false) and only revealed on
- * ready-to-show. The WebGL renderer initializes while the window is still
- * hidden, so its glyph atlas is built against whatever devicePixelRatio the
- * not-yet-composited window reports and its drawing buffer is never painted.
- * Once the window is shown a stale atlas yields garbled text (wrong cell
- * metrics) and a quiet terminal stays blank (the buffer comes up empty and,
- * with preserveDrawingBuffer:false, nothing redraws it). clearTextureAtlas()
- * rebuilds the atlas at the now-correct DPR; refresh() repaints into the live
- * buffer. No-op (besides a cheap refresh) on the canvas renderer fallback.
+ * Why all of them: xterm caches a single TextureAtlas shared by every terminal
+ * with the same config (font, theme, DPR — see CharAtlasCache.acquireTextureAtlas).
+ * clearTextureAtlas() resets that SHARED atlas's glyph layout but clears only the
+ * calling terminal's render model and redraws only that terminal. Every other
+ * terminal keeps a model full of texture coordinates that now point into the
+ * re-laid-out atlas, so they render scrambled glyphs until something clears their
+ * model too — which is why resizing a terminal (terminal.resize → _clearModel)
+ * "fixed" it. Clearing one terminal therefore corrupted all its siblings.
+ *
+ * So clear every terminal in one synchronous pass: the first clearTextureAtlas()
+ * resets the shared atlas, the rest early-return on the now-empty atlas
+ * (TextureAtlas.clearTexture bails when currentRow is at 0,0) but still clear
+ * their own model. Redraws are animation-frame-debounced, so all terminals
+ * repaint together against the same freshly-reset atlas — no glyph desync.
+ *
+ * The original need still holds: a detached window opens hidden (show:false),
+ * so its WebGL renderer initializes against a stale devicePixelRatio and its
+ * drawing buffer never paints. Rebuilding the atlas at the now-correct DPR and
+ * refreshing fixes the blank/garbled terminal once the window is shown. No-op
+ * (besides a cheap refresh) on the canvas renderer fallback.
  */
-function forceWebglRepaint(panelId: string): void {
-  const entry = registry.get(panelId)
-  if (!entry) return
-  try {
-    entry.webglAddon?.clearTextureAtlas()
-    entry.terminal.refresh(0, entry.terminal.rows - 1)
-  } catch {
-    /* renderer mid-dispose — ignore */
+function forceWebglRepaint(): void {
+  for (const entry of registry.values()) {
+    try {
+      entry.webglAddon?.clearTextureAtlas()
+      entry.terminal.refresh(0, entry.terminal.rows - 1)
+    } catch {
+      /* renderer mid-dispose — ignore */
+    }
   }
 }
 
@@ -158,7 +170,7 @@ export function attach(panelId: string, container: HTMLDivElement): void {
   // visible transition. Registered once per entry (survives re-attach cycles).
   if (!entry.hasVisibilityListener) {
     const onVisible = (): void => {
-      if (document.visibilityState === 'visible') forceWebglRepaint(panelId)
+      if (document.visibilityState === 'visible') forceWebglRepaint()
     }
     document.addEventListener('visibilitychange', onVisible)
     entry.cleanupListeners.push(() => document.removeEventListener('visibilitychange', onVisible))
@@ -239,10 +251,10 @@ export function attach(panelId: string, container: HTMLDivElement): void {
     // while hidden against a stale DPR/size, so the first paint can be blank or
     // garbled until the atlas is rebuilt at the live DPR. The extra frames
     // cover a window still settling its size/DPR on the first painted frame.
-    forceWebglRepaint(panelId)
+    forceWebglRepaint()
     requestAnimationFrame(() => {
-      forceWebglRepaint(panelId)
-      requestAnimationFrame(() => forceWebglRepaint(panelId))
+      forceWebglRepaint()
+      requestAnimationFrame(() => forceWebglRepaint())
     })
 
     // Now that the xterm is sized to its real container, replay captured

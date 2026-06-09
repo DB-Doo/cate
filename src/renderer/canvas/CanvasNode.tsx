@@ -18,6 +18,7 @@ import { useDragStore, useDragSourceVisibility } from '../drag'
 import { useNodeResize } from '../hooks/useNodeResize'
 import { useCanvasNodeStyle } from './useCanvasNodeStyle'
 import { useCanvasNodeDrag } from './useCanvasNodeDrag'
+import { useGroupNodeDrag } from './useGroupNodeDrag'
 import { useNodeResizeCursor } from './useNodeResizeCursor'
 import { NodeResizeOverlay } from './NodeResizeOverlay'
 import type { DockStore } from '../stores/dockStore'
@@ -168,6 +169,7 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
   const focusNode = useCanvasStoreContext((s) => s.focusNode)
   const removeNode = useCanvasStoreContext((s) => s.removeNode)
   const toggleMaximize = useCanvasStoreContext((s) => s.toggleMaximize)
+  const isSelected = useCanvasStoreContext((s) => s.selectedNodeIds.has(nodeId))
   const isDockDragging = useDragStore((s) => s.isDragging)
   const { hidden: isWholeNodeDragSource } = useDragSourceVisibility(nodeId)
 
@@ -181,12 +183,17 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
     wasDragged,
   } = useCanvasNodeDrag(nodeId, dockStoreApi, canvasApi)
 
+  // Group move: when this node is part of a multi-selection, dragging it moves
+  // the whole selection together instead of running the single-node dock drag.
+  const { startGroupDrag } = useGroupNodeDrag(nodeId, canvasApi, wasDragged)
+
   // Wrap node-drag with the tab-vs-window routing. The tab bar uses this for
   // both empty-area mousedown (panelId undefined → whole node drag) and
   // individual tab mousedown (panelId set → detach that tab when the mini-dock
   // has multiple panels, else whole-node drag).
   const handleHeaderMouseDown = useCallback((e: React.MouseEvent, panelId?: string) => {
     if (handToolPanShouldWin(e)) return
+    if (startGroupDrag(e)) return
     if (panelId) {
       const total = collectPanelIds(dockStoreApi.getState().zones.center.layout).length
       if (total > 1) {
@@ -195,7 +202,7 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
       }
     }
     handleDragStart(e)
-  }, [handleDragStart, handleTabDetachStart, dockStoreApi])
+  }, [handleDragStart, handleTabDetachStart, dockStoreApi, startGroupDrag])
 
   const maximized = node ? checkMaximized(node) : false
 
@@ -293,6 +300,16 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
     },
     [dockStoreApi, wsId, confirmCloseForPanels],
   )
+
+  // A tab was detached into its own window via the "Move into New Window" menu
+  // action. moveTabToNewWindow undocks the panel from this mini-dock but can't
+  // know it lives inside a canvas node — so if that emptied the node, remove it
+  // here. Mirrors the drag-out path (removeFromSource → finalizeRemoveNode) so a
+  // single-panel node leaves the canvas instead of lingering as an empty husk.
+  const handlePanelRemoved = useCallback(() => {
+    const remaining = collectPanelIds(dockStoreApi.getState().zones.center.layout)
+    if (remaining.length === 0) canvasApi.getState().finalizeRemoveNode(nodeId)
+  }, [dockStoreApi, canvasApi, nodeId])
 
   const handleClose = useCallback(async () => {
     const panelIds = collectPanelIds(layout)
@@ -429,6 +446,7 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
           getPanelTitle={getPanelTitle}
           getPanel={getPanel}
           onClosePanel={handleClosePanel}
+          onPanelRemoved={handlePanelRemoved}
           excludePanelTypes={CANVAS_EXCLUDED_TYPES}
           localOnly
           compact
@@ -519,9 +537,10 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
         handleToggleMaximize()
         return
       }
+      if (startGroupDrag(e)) return
       handleDragStart(e)
     },
-    [handleDragStart, handleToggleMaximize],
+    [handleDragStart, handleToggleMaximize, startGroupDrag],
   )
 
   const handleGrabStripContextMenu = useCallback(
@@ -554,6 +573,7 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
   const { containerStyle, glowStyle } = useCanvasNodeStyle({
     node,
     isFocused,
+    isSelected,
     activityState,
     isAnimatingLayout,
     isHovered,
