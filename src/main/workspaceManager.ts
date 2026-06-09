@@ -192,6 +192,22 @@ async function updateWorkspace(id: string, changes: Partial<Omit<WorkspaceInfo, 
     }
   }
 
+  // Refuse to point a second workspace at a folder already open here. Two
+  // workspaces sharing one root would share its .cate/ state and clobber each
+  // other's autosave; the per-pid project lock can't catch a same-instance
+  // duplicate. The renderer redirects to the existing tab before reaching this,
+  // but the resolved path is the authority — it catches symlink/trailing-slash
+  // aliases the renderer's raw string compare misses.
+  if (nextRootPath && existing.rootPath !== nextRootPath && rootInUse(nextRootPath, id)) {
+    return {
+      ok: false,
+      error: {
+        code: 'DUPLICATE_ROOT',
+        message: `This folder is already open in another workspace: ${nextRootPath}`,
+      },
+    }
+  }
+
   const rootChanged = existing.rootPath !== nextRootPath
   const existingLocal = !!existing.rootPath && isLocalLocator(existing.rootPath)
   const nextLocal = !!nextRootPath && isLocalLocator(nextRootPath)

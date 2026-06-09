@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Fixed
 
 - **Terminals keep their exact look across windows and restarts**: a terminal dragged into its own window — or reopened on the next launch — now restores its full buffer with colors and styling intact (not a plain grey dump), resizes to the new window so commands like `ls` use the right width, and prompts a full-screen program (Claude Code, vim, htop) to redraw its whole frame instead of showing a half-drawn one until you resize the window by hand.
+- **No accidental duplicate workspaces**: opening a folder that's already open in another tab now focuses that tab instead of creating a second one that fought it over the same saved state.
 
 ## [1.2.6] - 2026-06-09
 

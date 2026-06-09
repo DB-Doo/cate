@@ -29,6 +29,22 @@ export function createRemoteSlice(set: AppSet, get: AppGet): RemoteSliceActions 
     setWorkspaceRootPath(wsId, rootPath) {
       const ws = get().workspaces.find((w) => w.id === wsId)
       if (!ws) return Promise.resolve(false)
+
+      // Don't open the same folder twice in this instance. Two tabs on one root
+      // would share its .cate/workspace.json + session.json and clobber each
+      // other's autosave. The project lock can't catch this — it's keyed on pid,
+      // so two tabs in the SAME process always re-acquire it. Redirect to the
+      // workspace that already has this folder instead of duplicating it. (Main
+      // backstops this with a DUPLICATE_ROOT check on the resolved path, below.)
+      const duplicate = get().workspaces.find((w) => w.id !== wsId && w.rootPath === rootPath)
+      if (duplicate) {
+        // Just focus the existing one. selectWorkspace already discards a
+        // never-rooted outgoing tab on switch, so the empty workspace we were
+        // about to fill is cleaned up; an already-rooted one is left untouched.
+        get().selectWorkspace(duplicate.id)
+        return Promise.resolve(false)
+      }
+
       const folderName = workspaceDisplayName(rootPath) || rootPath
       const desiredName = ws.name === 'Workspace' ? folderName : ws.name
       // Apply optimistically so any panel created synchronously after this call
