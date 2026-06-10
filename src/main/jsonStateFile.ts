@@ -26,6 +26,7 @@ import path from 'path'
 import { watch, type FSWatcher } from 'chokidar'
 import log from './logger'
 import { writeJsonAtomic, writeJsonAtomicSync } from './writeJsonAtomic'
+import { quarantineCorruptFile } from './quarantineCorruptFile'
 
 export interface JsonStateFileOptions<T> {
   /** File name under `app.getPath('userData')`. */
@@ -87,14 +88,12 @@ export function createJsonStateFile<T>(options: JsonStateFileOptions<T>): JsonSt
 
   /** Copy an unparseable file aside so a corrupt hand-edit / crash-mid-write is
    *  preserved for recovery instead of silently overwritten with defaults. */
-  function quarantineCorruptFile(): void {
-    try {
-      const p = filePath()
-      const backup = `${p}.corrupt-${Date.now()}`
-      fsSync.copyFileSync(p, backup)
+  function quarantineCorrupt(): void {
+    const backup = quarantineCorruptFile(filePath())
+    if (backup) {
       log.error('[jsonStateFile] %s is corrupt; backed up to %s and using defaults', filename, backup)
-    } catch (err) {
-      log.warn('[jsonStateFile] corrupt backup for %s failed: %O', filename, err)
+    } else {
+      log.warn('[jsonStateFile] corrupt backup for %s failed', filename)
     }
   }
 
@@ -112,7 +111,7 @@ export function createJsonStateFile<T>(options: JsonStateFileOptions<T>): JsonSt
           current = normalize(parsed, defaults)
           lastWrittenContent = raw
         } catch {
-          quarantineCorruptFile()
+          quarantineCorrupt()
           current = defaults
         }
       }

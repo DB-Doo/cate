@@ -62,7 +62,7 @@ import type {
   AuthProviderStatus,
 } from '../../shared/types'
 import type { AgentMessage as StoreMessage } from './agentStore'
-import { loadDefaultModel } from './agentModelPrefs'
+import { loadDefaultModel, clearModelPrefsForProvider } from './agentModelPrefs'
 
 // -----------------------------------------------------------------------------
 // Component
@@ -137,6 +137,9 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
   const currentUiRequest = uiRequests[0]
 
   const [providerStatuses, setProviderStatuses] = useState<AuthProviderStatus[]>([])
+  /** False until the first authStatus() round-trip — gates the stale-model
+   *  reset below so an empty initial status list never wipes a valid pick. */
+  const [authLoaded, setAuthLoaded] = useState(false)
   const [availableModels, setAvailableModels] = useState<
     Array<{ provider: string; model: string; label?: string }>
   >([])
@@ -211,6 +214,7 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
     try {
       const statuses = await window.electronAPI.authStatus()
       setProviderStatuses(statuses)
+      setAuthLoaded(true)
     } catch (err) {
       log.warn('[AgentPanel] refreshAuth failed', err)
     }
@@ -435,6 +439,7 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
     // Read the draft straight from the active slice so we never send a stale
     // closure value mid-stream.
     const cur = useAgentStore.getState().panels[activeAgentKey]
+    if (!cur?.model) return
     const text = (cur?.draft ?? '').trim()
     const images = (cur?.draftImages ?? []).slice()
     if (!text && images.length === 0) return
@@ -562,6 +567,27 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
     const s = providerStatuses.find((s) => s.id === selectedModel.provider)
     return !!s?.connected
   }, [selectedModel, providerStatuses])
+
+  // A model remembered from a provider the user has since cleared (saved
+  // default, or a resumed session's lastModel) should reset, not prompt a
+  // reconnect. Once real auth state is in, drop the stale pick — the auto-pick
+  // effect above then selects from whatever providers remain, or the "no
+  // model" hint shows when none do.
+  useEffect(() => {
+    if (!authLoaded || !activeAgentKey || !selectedModel) return
+    if (selectedProviderConnected) return
+    useAgentStore.getState().setModel(activeAgentKey, null)
+    clearModelPrefsForProvider(selectedModel.provider)
+  }, [authLoaded, activeAgentKey, selectedModel, selectedProviderConnected])
+
+  // With no model the composer is disabled and the placeholder doubles as the
+  // hint explaining why. The disconnected-provider term only matters in the
+  // window before the first authStatus() resolves — once it does, the reset
+  // effect above nulls the model and the no-model state takes over.
+  const composerDisabled = !selectedModel || !selectedProviderConnected
+  const composerPlaceholder = !selectedModel
+    ? 'No model selected or no provider is set up yet'
+    : undefined
 
   const filteredChats = useMemo(() => {
     if (!chatSearch.trim()) return chats
@@ -1011,19 +1037,26 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
           />
         ) : (
         <div className="relative flex-1 flex flex-col min-h-0">
-            {selectedModel && !selectedProviderConnected && (
+            {!selectedModel ? (
               <div className="px-3 py-2 bg-agent/10 border-b border-agent/30 flex items-center gap-2 text-[12px] text-primary">
                 <span className="flex-1 truncate">
-                  Connect <strong>{selectedModel.provider}</strong> to start.
+                  No model selected or no provider is set up yet.
                 </span>
                 <button
-                  onClick={() => openProviderSettings()}
+                  onClick={() => {
+                    if (availableModels.length > 0) {
+                      void refreshModels()
+                      setModelPickerOpen(true)
+                    } else {
+                      openProviderSettings()
+                    }
+                  }}
                   className="px-2 py-1 rounded-md bg-agent hover:bg-agent-light text-white text-[11px] font-medium shrink-0"
                 >
-                  Connect
+                  {availableModels.length > 0 ? 'Pick model' : 'Set up provider'}
                 </button>
               </div>
-            )}
+            ) : null}
 
             {/* Retry status is now shown inline in the chat thread */}
             <ExtensionWidget widgets={extensionWidgets} placement="aboveEditor" />
@@ -1044,7 +1077,7 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
                       onChange={setDraft}
                       onSubmit={handleSend}
                       onStop={handleInterrupt}
-                      disabled={!!selectedModel && !selectedProviderConnected}
+                      disabled={composerDisabled}
                       running={running}
                       textareaRef={textareaRef}
                       commands={commands}
@@ -1063,11 +1096,7 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
                       planModeActive={planModeActive}
                       onTogglePlanMode={handleTogglePlanMode}
                       onSlashOpen={handleSlashOpen}
-                      placeholder={
-                        !selectedModel ? 'Pick a model to start…'
-                          : !selectedProviderConnected ? `Connect ${selectedModel.provider} to start…`
-                          : 'Ask the agent anything about this workspace…'
-                      }
+                      placeholder={composerPlaceholder ?? 'Ask the agent anything about this workspace…'}
                     />
                   </div>
                 </div>
@@ -1101,7 +1130,7 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
                   onChange={setDraft}
                   onSubmit={handleSend}
                   onStop={handleInterrupt}
-                  disabled={!!selectedModel && !selectedProviderConnected}
+                  disabled={composerDisabled}
                   running={running}
                   textareaRef={textareaRef}
                   commands={commands}
@@ -1120,6 +1149,7 @@ export default function AgentPanel({ panelId, workspaceId }: PanelProps) {
                   planModeActive={planModeActive}
                   onTogglePlanMode={handleTogglePlanMode}
                   onSlashOpen={handleSlashOpen}
+                  placeholder={composerPlaceholder}
                 />
               </>
             )}

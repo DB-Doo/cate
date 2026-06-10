@@ -325,9 +325,16 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
         )}
       </div>
 
-      {/* Active panel content */}
+      {/* Active panel content. Keyed by panel id: switching between two tabs of
+          the SAME component type (canvas↔canvas, terminal↔terminal) must
+          remount the content, not reuse the instance with a swapped panelId —
+          panels wire store subscriptions in mount-only effects, so a reused
+          instance keeps driving the previous panel's store (visible canvas
+          transformed by the hidden canvas's zoom/offset). */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
-        {activePanelId ? renderPanel(activePanelId) : (
+        {activePanelId ? (
+          <React.Fragment key={activePanelId}>{renderPanel(activePanelId)}</React.Fragment>
+        ) : (
           <div className="flex items-center justify-center h-full text-muted text-sm">
             No panel
           </div>

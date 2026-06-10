@@ -11,6 +11,8 @@ import {
   WORKSPACE_EXTERNAL_EDIT_DISMISS,
 } from '../shared/ipc-channels'
 import { holdsProjectLock, acquireProjectLock } from './projectLock'
+import { isPlainObject } from './jsonUtils'
+import { quarantineCorruptFile } from './quarantineCorruptFile'
 import type { ProjectWorkspaceFile, ProjectSessionFile } from '../shared/types'
 import { toRelativePath } from '../shared/pathUtils'
 import { broadcastToAll } from './windowRegistry'
@@ -126,10 +128,19 @@ function atomicWriteSync(filePath: string, json: string): void {
 }
 
 async function tryReadJson<T>(filePath: string): Promise<T | null> {
+  let data: string
   try {
-    const data = await fs.readFile(filePath, 'utf-8')
+    data = await fs.readFile(filePath, 'utf-8')
+  } catch {
+    return null
+  }
+  try {
     return JSON.parse(data) as T
   } catch {
+    // The file exists but is unparseable: quarantine it so the broken content
+    // survives for recovery (the .bak tier handles the actual load fallback).
+    const backup = quarantineCorruptFile(filePath)
+    log.warn('Corrupt JSON at %s%s; ignoring', filePath, backup ? `, backed up to ${backup}` : '')
     return null
   }
 }
@@ -184,10 +195,14 @@ function wouldEmptyOverwriteWorkspaceSync(rootPath: string, incomingNodeCount: n
 // Recovery tiers are primary then .bak. The writers (atomicWrite/atomicWriteSync)
 // no longer leave a fixed `<file>.tmp` behind — they uniquify each tmp as
 // `<file>.<pid>.<seq>.tmp` — so reading that stale name only ever found nothing.
-async function tryReadWithFallback<T>(filePath: string): Promise<T | null> {
+// When a validator is given, a parseable-but-invalid primary also falls through
+// to the .bak tier instead of masking a still-good backup.
+async function tryReadWithFallback<T>(filePath: string, isValid?: (v: unknown) => boolean): Promise<T | null> {
   const result = await tryReadJson<T>(filePath)
-  if (result) return result
-  return tryReadJson<T>(filePath + '.bak')
+  if (result && (!isValid || isValid(result))) return result
+  const bak = await tryReadJson<T>(filePath + '.bak')
+  if (bak && (!isValid || isValid(bak))) return bak
+  return null
 }
 
 // Sweep orphaned `<file>.<pid>.<seq>.tmp` files next to `filePath`. A crash
@@ -231,17 +246,47 @@ async function readWorkspaceWithFallback(filePath: string): Promise<ProjectWorks
 }
 
 function isValidWorkspace(data: unknown): data is ProjectWorkspaceFile {
-  if (!data || typeof data !== 'object') return false
-  const obj = data as Record<string, unknown>
+  if (!isPlainObject(data)) return false
   // workspace.json carries the shareable name/color; session.json does not —
   // that's what tells the two version-1 files apart.
-  return obj.version === 1 && typeof obj.name === 'string' && typeof obj.color === 'string'
+  if (data.version !== 1 || typeof data.name !== 'string' || typeof data.color !== 'string') return false
+  // workspace.json is committable and hand-editable, so also check the container
+  // shapes the restore code dereferences. A structurally broken file degrades to
+  // the .bak tier instead of flowing malformed entries into the renderer (or
+  // crashing workspaceNodeCount on e.g. a null canvases entry).
+  if (data.dockState !== undefined) {
+    if (!isPlainObject(data.dockState) || !isPlainObject(data.dockState.zones)) return false
+  }
+  if (data.panels !== undefined) {
+    if (!isPlainObject(data.panels)) return false
+    for (const ref of Object.values(data.panels)) {
+      if (!isPlainObject(ref) || typeof ref.type !== 'string') return false
+    }
+  }
+  if (data.canvases !== undefined) {
+    if (!isPlainObject(data.canvases)) return false
+    for (const canvas of Object.values(data.canvases)) {
+      if (!isPlainObject(canvas)) return false
+      if (canvas.canvasNodes !== undefined && !isPlainObject(canvas.canvasNodes)) return false
+    }
+  }
+  return true
 }
 
 function isValidSession(data: unknown): data is ProjectSessionFile {
-  if (!data || typeof data !== 'object') return false
-  const obj = data as Record<string, unknown>
-  return obj.version === 1 && obj.panels != null
+  if (!isPlainObject(data)) return false
+  if (data.version !== 1 || !isPlainObject(data.panels)) return false
+  for (const panel of Object.values(data.panels)) {
+    if (!isPlainObject(panel)) return false
+  }
+  if (data.dockWindows !== undefined) {
+    if (!Array.isArray(data.dockWindows)) return false
+    for (const dw of data.dockWindows) {
+      if (!isPlainObject(dw) || !isPlainObject(dw.panels)) return false
+    }
+  }
+  if (data.worktrees !== undefined && !Array.isArray(data.worktrees)) return false
+  return true
 }
 
 // Core local save: serializes the per-root write and applies both disk-boundary
@@ -296,7 +341,7 @@ export async function loadProjectState(rootPath: string): Promise<{
     .readFile(workspacePath(rootPath), 'utf-8')
     .then((raw) => rememberWorkspaceContent(rootPath, raw))
     .catch(() => {})
-  const sess = await tryReadWithFallback<ProjectSessionFile>(sessionPath(rootPath))
+  const sess = await tryReadWithFallback<ProjectSessionFile>(sessionPath(rootPath), isValidSession)
   // Sweep any orphaned tmp files a crashed write may have left behind.
   await Promise.all([
     cleanOrphanedTmpFiles(workspacePath(rootPath)),
@@ -304,7 +349,7 @@ export async function loadProjectState(rootPath: string): Promise<{
   ])
   return {
     workspace: ws,
-    session: sess && isValidSession(sess) ? sess : null,
+    session: sess,
   }
 }
 
