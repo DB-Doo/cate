@@ -27,6 +27,7 @@ import {
   TERMINAL_SET_VISIBILITY,
 } from '../../shared/ipc-channels'
 import { getOrCreateLogger, removeLogger, flushAll as flushAllLoggers, disposeAll as disposeAllLoggers } from './terminalLogger'
+import log from '../logger'
 import { sendToWindow, windowFromEvent, onWindowClosed } from '../windowRegistry'
 import { countTerminalData } from '../perf/perfMonitor'
 import { parseLocator, type CompanionId } from '../companion/locator'
@@ -318,7 +319,28 @@ export function registerHandlers(): void {
     return companion.process.getCwd(ptyId)
   })
 
+  // Scrollback/log file names are derived from ids supplied by the renderer
+  // (and, on restore, from hand-editable session.json) and joined into log-dir
+  // paths. Accept only a plain single-segment file name so a crafted id cannot
+  // escape the log directory via path separators or dot-dot.
+  function isSafeLogFileId(id: unknown): id is string {
+    return (
+      typeof id === 'string' &&
+      id.length > 0 &&
+      id.length <= 256 &&
+      !id.includes('/') &&
+      !id.includes('\\') &&
+      !id.includes('\0') &&
+      id !== '.' &&
+      id !== '..'
+    )
+  }
+
   ipcMain.handle(TERMINAL_LOG_READ, async (_event, terminalId: string): Promise<string | null> => {
+    if (!isSafeLogFileId(terminalId)) {
+      log.warn('[terminal] rejected unsafe terminal id for log read: %s', String(terminalId))
+      return null
+    }
     const { TerminalLogger } = await import('./terminalLogger')
     const logDir = TerminalLogger.getLogDir()
     const scrollbackPath = path.join(logDir, `${terminalId}.scrollback`)
@@ -336,6 +358,10 @@ export function registerHandlers(): void {
   })
 
   ipcMain.handle(TERMINAL_SCROLLBACK_SAVE, async (_event, ptyId: string, content: string): Promise<void> => {
+    if (!isSafeLogFileId(ptyId)) {
+      log.warn('[terminal] rejected unsafe terminal id for scrollback save: %s', String(ptyId))
+      return
+    }
     const { TerminalLogger } = await import('./terminalLogger')
     const logDir = TerminalLogger.getLogDir()
     await fs.mkdir(logDir, { recursive: true })

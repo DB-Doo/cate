@@ -57,8 +57,6 @@ export async function saveSession(): Promise<void> {
       continue
     }
 
-    const isSelected = workspace.id === updatedState.selectedWorkspaceId
-
     // Dock layout from the workspace's OWN dock store if activated, else its
     // last-saved snapshot. The center-zone canvas panel is the primary canvas.
     const dockSnapshot = getWorkspaceDockSnapshot(workspace.id)
@@ -116,10 +114,13 @@ export async function saveSession(): Promise<void> {
       await Promise.all(scrollbackPromises)
     }
 
-    // Live working directory for each terminal in the SELECTED workspace, keyed
-    // by panel id, so a restored terminal respawns where it was. Batched.
+    // Live working directory for every running terminal, keyed by panel id, so a
+    // restored terminal respawns where it was. Batched. PTYs keep running in
+    // non-selected (but previously activated) workspaces, so capture is NOT
+    // limited to the selected one; never-activated workspaces took the deferred-
+    // snapshot path above and keep their saved cwds.
     const terminalCwds: Record<string, string> = {}
-    if (isSelected && panels) {
+    if (panels) {
       const cwdPromises: { id: string; promise: Promise<string | null> }[] = []
       for (const panel of Object.values(panels)) {
         if (panel.type !== 'terminal') continue
