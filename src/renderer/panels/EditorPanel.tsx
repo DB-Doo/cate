@@ -22,6 +22,16 @@ import {
 import { getActiveTheme, subscribeTheme } from '../lib/themeManager'
 import type { Theme } from '../../shared/types'
 import { takePendingReveal } from '../lib/editor/editorReveal'
+import {
+  getCachedModel,
+  rememberModel,
+  retainModel,
+  releaseModel,
+  resolveLoadedModel,
+  markLoadFailed,
+  clearLoadFailed,
+  isLoadFailed,
+} from '../lib/editor/modelCache'
 import { watchFsRoot } from '../lib/fs/fsWatchManager'
 
 // -----------------------------------------------------------------------------
@@ -117,58 +127,12 @@ monacoGlobal.MonacoEnvironment = {
   },
 }
 
-// LRU cap on Monaco model cache so long sessions don't accumulate models for
-// every file the user has ever opened. Oldest entries are disposed on eviction.
-const MODEL_CACHE_LIMIT = 20
-
-// -----------------------------------------------------------------------------
-// Module-level model cache keyed by file path
-// -----------------------------------------------------------------------------
-
-const modelCache = new Map<string, monaco.editor.ITextModel>()
-// Counts how many mounted EditorPanel instances are actively using a cached model.
-const modelRefCount = new Map<string, number>()
-
 // File paths whose model is mid external-reload (setValue pulled from disk). A
 // shared cached model can back several editors, so the setValue fires
 // onDidChangeModelContent on every one of them — we mark the path here for the
 // synchronous duration of setValue so those change events aren't mistaken for a
 // user edit and flip the panel(s) to dirty.
 const externalReloadPaths = new Set<string>()
-
-function rememberModel(filePath: string, model: monaco.editor.ITextModel): void {
-  // Map preserves insertion order — re-insert to mark as most recent.
-  modelCache.delete(filePath)
-  modelCache.set(filePath, model)
-  while (modelCache.size > MODEL_CACHE_LIMIT) {
-    const oldestKey = modelCache.keys().next().value
-    if (oldestKey === undefined) break
-    // Don't evict a model that is still in use by a mounted editor.
-    if ((modelRefCount.get(oldestKey) ?? 0) > 0) break
-    const oldest = modelCache.get(oldestKey)
-    modelCache.delete(oldestKey)
-    if (oldest && !oldest.isDisposed()) {
-      try { oldest.dispose() } catch { /* noop */ }
-    }
-  }
-}
-
-function retainModel(filePath: string): void {
-  modelRefCount.set(filePath, (modelRefCount.get(filePath) ?? 0) + 1)
-}
-
-function releaseModel(filePath: string): void {
-  const count = (modelRefCount.get(filePath) ?? 0) - 1
-  if (count <= 0) {
-    // Drop the refcount entry but DO NOT dispose the model. Keeping it warm in
-    // the LRU cache makes the next open of the same file instant (no re-read,
-    // no re-tokenization). The LRU eviction path in rememberModel() will
-    // dispose the model later if it falls out of the cache.
-    modelRefCount.delete(filePath)
-  } else {
-    modelRefCount.set(filePath, count)
-  }
-}
 
 // -----------------------------------------------------------------------------
 // Monaco theme — a single 'cate-active' theme built from the active unified
@@ -335,6 +299,7 @@ export default function EditorPanel({
   if (filePath !== undefined) filePathRef.current = filePath
 
   const [markdownContent, setMarkdownContent] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const workspaces = useAppStore((s) => s.workspaces)
   const ws = workspaces.find((w) => w.id === workspaceId)
@@ -360,6 +325,14 @@ export default function EditorPanel({
   const save = useCallback(async (): Promise<boolean> => {
     const editor = editorRef.current
     if (!editor || diffMode) return false
+
+    // Never write a buffer that failed to load (or never finished loading) back
+    // to disk — its contents are an empty placeholder, not the user's file, and
+    // saving would truncate the real file.
+    if (filePathRef.current && isLoadFailed(filePathRef.current)) {
+      log.warn('[EditorPanel] Refusing to save — file never loaded successfully:', filePathRef.current)
+      return false
+    }
 
     const content = editor.getValue()
 
@@ -564,7 +537,7 @@ export default function EditorPanel({
       const fileUri = filePath.startsWith('cate-companion://')
         ? monaco.Uri.parse(filePath)
         : monaco.Uri.file(filePath)
-      let cached = modelCache.get(filePath)
+      let cached = getCachedModel(filePath) as monaco.editor.ITextModel | undefined
       if (!cached || cached.isDisposed()) {
         const byUri = monaco.editor.getModel(fileUri)
         if (byUri && !byUri.isDisposed()) {
@@ -579,16 +552,24 @@ export default function EditorPanel({
         applyPendingReveal()
       } else {
         const language = detectLanguage(filePath)
+        const targetPath = filePath
         window.electronAPI
           .fsReadFile(filePath, workspaceId)
           .then((content) => {
             if (cancelled) return
-            // Pass the file URI so Monaco indexes the model by it; this
-            // enables monaco.editor.getModel(uri) reuse on later opens.
-            const model = monaco.editor.createModel(content, language, fileUri)
+            clearLoadFailed(targetPath)
+            setLoadError(null)
+            // Pass the file URI so Monaco indexes the model by it; this enables
+            // monaco.editor.getModel(uri) reuse on later opens. When two panels
+            // open the same uncached file concurrently the URI is already taken,
+            // so reuse that model instead of letting createModel() throw.
+            const model = resolveLoadedModel(
+              () => monaco.editor.getModel(fileUri),
+              () => monaco.editor.createModel(content, language, fileUri),
+            )
             createdModel = model
-            rememberModel(filePath, model)
-            retainModel(filePath)
+            rememberModel(targetPath, model)
+            retainModel(targetPath)
             modelRetained = true
             editor.setModel(model)
             applyPendingReveal()
@@ -596,14 +577,12 @@ export default function EditorPanel({
           .catch((err) => {
             if (cancelled) return
             log.error('[EditorPanel] Failed to read file:', err)
-            // No URI here — we don't want a malformed/empty placeholder to
-            // squat on the file URI and be reused as the real model later.
-            const model = monaco.editor.createModel('', language)
-            createdModel = model
-            rememberModel(filePath, model)
-            retainModel(filePath)
-            modelRetained = true
-            editor.setModel(model)
+            // Do NOT cache a placeholder model under the real path or its URI —
+            // a later open would hit the cache and show the file as empty, and a
+            // Cmd+S from that empty buffer would overwrite the real file. Mark
+            // the path as failed (blocks save) and surface a visible error.
+            markLoadFailed(targetPath)
+            setLoadError(String((err as Error)?.message ?? err))
           })
       }
     } else {
@@ -672,6 +651,9 @@ export default function EditorPanel({
       } else if (!filePath && createdModel && !createdModel.isDisposed()) {
         createdModel.dispose()
       }
+      // Drop any failed-load marker so a remount retries the read from disk
+      // instead of staying permanently blocked.
+      if (filePath) clearLoadFailed(filePath)
       editor.dispose()
       editorRef.current = null
     }
@@ -826,7 +808,13 @@ export default function EditorPanel({
       {markdownPreview && isMarkdown && (
         <MarkdownPreview content={markdownContent} />
       )}
-      <div ref={containerRef} className={`w-full h-full ${markdownPreview && isMarkdown ? 'hidden' : ''}`} />
+      {loadError && !diffMode && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1 bg-surface-1 px-6 text-center">
+          <div className="text-[13px] font-medium text-primary">Couldn’t open this file</div>
+          <div className="text-[12px] text-secondary break-all">{loadError}</div>
+        </div>
+      )}
+      <div ref={containerRef} className={`w-full h-full ${(markdownPreview && isMarkdown) || loadError ? 'hidden' : ''}`} />
     </div>
   )
 }

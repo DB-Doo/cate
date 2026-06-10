@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { ipcMain } from 'electron'
-import fs from 'fs'
+import fs from 'fs/promises'
 import path from 'path'
 import {
   TERMINAL_CREATE,
@@ -67,8 +67,10 @@ export function getCompanionForTerminal(id: string): Companion | null {
 interface TerminalTransferState {
   buffer: Buffer[]
   bufferSize: number
-  targetWindowId: number
-  /** Fallback timer (cleared on ack / re-begin / completion). */
+  /** null while buffering ahead of a destination that doesn't exist yet
+   *  (detach buffers BEFORE the new window is created). */
+  targetWindowId: number | null
+  /** Fallback timer (cleared on ack / retarget / completion / abort). */
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -91,11 +93,43 @@ function completeTerminalTransfer(ptyId: string, targetWindowId: number): void {
   }
 }
 
-export function beginTerminalTransfer(ptyId: string, targetWindowId: number): void {
-  // Re-begin is normal: detach buffers with a -1 placeholder, then re-points at
-  // the real window id once it exists. Carry the buffer forward and CLEAR the
-  // previous timer — otherwise a stale 5s timeout fires mid-transfer and tears
-  // down the live state, and the second begin would drop already-buffered bytes.
+/** End a transfer WITHOUT moving ownership: flush the held output back to the
+ *  current owner (the move never happened — window creation failed, the target
+ *  died, or no destination ever arrived). The source xterm is still attached in
+ *  the abort scenarios, so the bytes land where the panel still lives. */
+export function abortTerminalTransfer(ptyId: string): void {
+  const state = transferStates.get(ptyId)
+  if (!state) return
+  clearTimeout(state.timer)
+  transferStates.delete(ptyId)
+  const ownerId = terminalOwners.get(ptyId)
+  if (ownerId == null) return
+  for (const chunk of state.buffer) {
+    try { sendToWindow(ownerId, TERMINAL_DATA, ptyId, chunk.toString()) } catch { /* owner gone */ }
+  }
+}
+
+/** Start holding PTY output ahead of a move whose destination window does not
+ *  exist yet (detach buffers BEFORE createWindow). Until a destination arrives
+ *  via setTerminalTransferTarget, the fallback timer ABORTS back to the current
+ *  owner — there is no window the transfer could legitimately complete toward. */
+export function beginTerminalBuffering(ptyId: string): void {
+  const existing = transferStates.get(ptyId)
+  if (existing) clearTimeout(existing.timer)
+  const timer = setTimeout(() => abortTerminalTransfer(ptyId), TRANSFER_TIMEOUT_MS)
+  transferStates.set(ptyId, {
+    buffer: existing?.buffer ?? [],
+    bufferSize: existing?.bufferSize ?? 0,
+    targetWindowId: null,
+    timer,
+  })
+}
+
+/** Point a transfer at its destination window, starting one if none is armed.
+ *  Carries any already-buffered bytes forward and re-arms the fallback timer to
+ *  COMPLETE toward the target (a missing ack must not strand the PTY on a dead
+ *  source — ownership follows the panel). */
+export function setTerminalTransferTarget(ptyId: string, targetWindowId: number): void {
   const existing = transferStates.get(ptyId)
   if (existing) clearTimeout(existing.timer)
   const timer = setTimeout(() => completeTerminalTransfer(ptyId, targetWindowId), TRANSFER_TIMEOUT_MS)
@@ -107,22 +141,38 @@ export function beginTerminalTransfer(ptyId: string, targetWindowId: number): vo
   })
 }
 
+/** Begin a transfer whose destination is already known (cross-window drop,
+ *  dock-back): buffer + target in one step. */
+export function beginTerminalTransfer(ptyId: string, targetWindowId: number): void {
+  setTerminalTransferTarget(ptyId, targetWindowId)
+}
+
 export function acknowledgeTerminalTransfer(ptyId: string): void {
   const state = transferStates.get(ptyId)
   if (!state) return
+  // An ack can only come from a wired receiver, which requires a destination —
+  // ignore a stray ack while the transfer is still target-less.
+  if (state.targetWindowId == null) return
   completeTerminalTransfer(ptyId, state.targetWindowId)
 }
 
 /** A window was destroyed. Any transfer whose SOURCE was that window is
  *  completed to its target now (the running PTY follows the panel instead of
- *  pointing at a dead owner); any transfer whose TARGET died is abandoned. */
+ *  pointing at a dead owner); any transfer whose TARGET died is aborted back
+ *  to the still-live owner. */
 export function handleWindowClosedTerminalTransfers(windowId: number): void {
   for (const [ptyId, state] of [...transferStates]) {
     if (state.targetWindowId === windowId) {
-      clearTimeout(state.timer)
-      transferStates.delete(ptyId)
+      abortTerminalTransfer(ptyId)
     } else if (terminalOwners.get(ptyId) === windowId) {
-      completeTerminalTransfer(ptyId, state.targetWindowId)
+      if (state.targetWindowId != null) {
+        completeTerminalTransfer(ptyId, state.targetWindowId)
+      } else {
+        // Owner died while the transfer had no destination yet — nowhere to
+        // flush, drop the held bytes with the window.
+        clearTimeout(state.timer)
+        transferStates.delete(ptyId)
+      }
     }
   }
 }
@@ -273,7 +323,7 @@ export function registerHandlers(): void {
     const logDir = TerminalLogger.getLogDir()
     const scrollbackPath = path.join(logDir, `${terminalId}.scrollback`)
     try {
-      const data = fs.readFileSync(scrollbackPath, 'utf-8')
+      const data = await fs.readFile(scrollbackPath, 'utf-8')
       if (data) return data
     } catch { /* fall through to raw log */ }
 
@@ -288,8 +338,8 @@ export function registerHandlers(): void {
   ipcMain.handle(TERMINAL_SCROLLBACK_SAVE, async (_event, ptyId: string, content: string): Promise<void> => {
     const { TerminalLogger } = await import('./terminalLogger')
     const logDir = TerminalLogger.getLogDir()
-    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true })
-    fs.writeFileSync(path.join(logDir, `${ptyId}.scrollback`), content, 'utf-8')
+    await fs.mkdir(logDir, { recursive: true })
+    await fs.writeFile(path.join(logDir, `${ptyId}.scrollback`), content, 'utf-8')
   })
 }
 

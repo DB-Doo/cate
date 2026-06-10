@@ -2,7 +2,7 @@
 // Type declaration for window.electronAPI exposed via contextBridge
 // =============================================================================
 
-import type { AgentCreateOptions, AgentEventEnvelope, AgentExtensionUIResponse, AgentImageAttachment, AgentModelRef, AgentModelDescriptor, AgentRpcState, AgentSessionListEntry, AgentSessionStats, AgentSlashCommand, AgentThinkingLevel, AgentToolApprovalRequest, AppSettings, AgentState, AuthProviderDescriptor, AuthProviderStatus, CanvasLayoutSnapshot, CateWindowParams, CustomOpenAIProvider, DockWindowInitPayload, DockWindowSyncState, DetachedDockWindowSnapshot, WindowPanelInfo, WindowPanelReport, DockStateSnapshot, FileSearchOptions, FileSearchResult, FileTreeNode, GitInfo, SearchOptions, SearchResultBatch, SearchDoneEvent, NotificationAction, OAuthFlowEvent, PanelState, PanelTransferSnapshot, PerfSnapshot, Point, SessionSnapshot, SidebarSession, TerminalActivity, WorkspaceInfo, WorkspaceMutationResult, RemoteConnectSpec, CompanionConnectResult, CompanionStatusEvent, CompanionConnection, CompanionPhase, RemoteProjectEntry, SshHostEntry, UIState } from './types'
+import type { AgentCreateOptions, AgentEventEnvelope, AgentExtensionUIResponse, AgentImageAttachment, AgentModelRef, AgentModelDescriptor, AgentRpcState, AgentSessionListEntry, AgentSessionStats, AgentSlashCommand, AgentThinkingLevel, AppSettings, AgentState, AuthProviderDescriptor, AuthProviderStatus, CanvasLayoutSnapshot, CateWindowParams, CustomOpenAIProvider, DockWindowInitPayload, DockWindowSyncState, DetachedDockWindowSnapshot, WindowPanelInfo, WindowPanelReport, DockStateSnapshot, FileSearchOptions, FileSearchResult, FileTreeNode, GitInfo, SearchOptions, SearchResultBatch, SearchDoneEvent, NotificationAction, OAuthFlowEvent, PanelState, PanelTransferSnapshot, PerfSnapshot, Point, SessionSnapshot, SidebarSession, TerminalActivity, WorkspaceInfo, WorkspaceMutationResult, RemoteConnectSpec, CompanionConnectResult, CompanionStatusEvent, CompanionConnection, CompanionPhase, RemoteProjectEntry, SshHostEntry, UIState } from './types'
 import type { SavedSkill, InstalledSkill, SkillEntry, SkillSource, SkillTargetId } from './skills'
 
 /** Lifecycle state of the auto-updater, surfaced to the renderer for the
@@ -691,8 +691,10 @@ export interface ElectronAPI {
    *  targeted DRAG_END against the drag it's tracking. */
   onCrossWindowDragUpdate(callback: (screenPos: Point, snapshot: PanelTransferSnapshot, dragId?: string) => void): () => void
 
-  /** Report that this window accepted a cross-window drop. */
-  crossWindowDragDrop(panelId: string): Promise<void>
+  /** Claim the in-flight cross-window drop. Main is the arbiter: `accepted` is
+   *  false when the drag already resolved unclaimed (the source has fallen back
+   *  to a detach) — the caller must NOT materialize the panel in that case. */
+  crossWindowDragDrop(panelId: string): Promise<{ accepted: boolean }>
 
   /** Cancel an active cross-window drag. */
   crossWindowDragCancel(): Promise<void>
@@ -776,10 +778,6 @@ export interface ElectronAPI {
   /** Subscribe to "load this saved layout" dispatches from the native Layouts menu. */
   onMenuLoadLayout(callback: (name: string) => void): () => void
 
-  /** Subscribe to panel-creation actions routed to this (main) window from a
-   *  detached dock/panel window, so the new panel lands on the canvas. */
-  onMenuCreatePanel(callback: (payload: import('./types').MenuCreatePanelPayload) => void): () => void
-
   /** Subscribe to browser navigation shortcuts forwarded from a focused webview
    *  guest (Cmd+R/[/]/L) or the Browser menu. */
   onBrowserShortcut(callback: (action: import('./types').BrowserShortcutAction) => void): () => void
@@ -822,8 +820,6 @@ export interface ElectronAPI {
   submitFeedback(payload: { rating: number; comment?: string }): Promise<{ ok: boolean; buffered?: boolean }>
   /** Mark the feedback prompt as dismissed without submitting. */
   dismissFeedback(method: string): void
-  /** Track that the user engaged with the feedback modal (first interaction). */
-  trackFeedbackEngagement(): void
   /** Pull-based check for pending feedback (renderer calls on mount). */
   getPendingFeedback(): Promise<{ fromVersion: string; toVersion: string } | null>
   /** Track a promo link click (e.g. product_hunt, github_star, newsletter). */
@@ -909,58 +905,20 @@ export interface ElectronAPI {
   /** Available slash commands (skills, prompt templates, extension commands). */
   agentGetCommands(panelId: string): Promise<AgentSlashCommand[]>
 
-  /** Approve or deny a pending tool call. */
-  agentToolDecision(panelId: string, toolCallId: string, decision: 'allow' | 'deny', reason?: string): Promise<void>
-
   /** Open <cwd>/.cate/pi-agent/{agents|prompts} in the OS file manager. */
-  agentOpenSkillsFolder(cwd: string, kind: 'agents' | 'prompts' | 'skills'): Promise<void>
+  agentOpenSkillsFolder(cwd: string, kind: 'agents' | 'prompts'): Promise<void>
 
-  /** Open a single skill/prompt/agent file in the OS default editor. */
+  /** Open a single agent/prompt file in the OS default editor. */
   agentOpenSkillFile(filePath: string): Promise<void>
 
-  /** Delete a skill/prompt/agent file. Only allowed under the workspace's pi-agent dir. */
+  /** Delete an agent/prompt file. Only allowed under the workspace's pi-agent dir. */
   agentDeleteSkillFile(cwd: string, filePath: string): Promise<void>
 
-  /** Create a new skill/prompt file from a template, then open it. */
-  agentCreateSkill(cwd: string, kind: 'agents' | 'prompts' | 'skills', name: string): Promise<string>
+  /** Create a new agent/prompt file from a template, then open it. */
+  agentCreateSkill(cwd: string, kind: 'agents' | 'prompts', name: string): Promise<string>
 
   /** List user files under <cwd>/.cate/pi-agent/{agents|prompts}. */
-  agentListSkillFiles(cwd: string, kind: 'agents' | 'prompts' | 'skills'): Promise<Array<{ name: string; description?: string; path: string }>>
-
-  /** Browse-able marketplace catalog backed by a live scrape of pi.dev/packages
-   *  (~2.9k entries, paginated). Returns an empty list when pi.dev is
-   *  unreachable so the UI can render a "Catalog unavailable" state. */
-  agentMarketplaceList(params?: {
-    page?: number
-    query?: string
-    sort?: 'downloads' | 'recent' | 'name'
-  }): Promise<{
-    entries: Array<{
-      name: string
-      description: string
-      author: string
-      downloads: number
-      type: string
-      repoUrl: string
-      requiresTerminal: boolean
-    }>
-    totalPages: number
-    page: number
-  }>
-
-  /** List extensions currently present in <cwd>/.cate/pi-agent/extensions/. */
-  agentMarketplaceListInstalled(cwd: string): Promise<Array<{
-    name: string
-    description?: string
-    requiresTerminal: boolean
-    path: string
-  }>>
-
-  /** Install an extension via `pi install npm:<name>`. Streams output to the log. */
-  agentMarketplaceInstall(cwd: string, name: string): Promise<{ ok: boolean; error?: string }>
-
-  /** Uninstall an extension via `pi remove npm:<name>`. */
-  agentMarketplaceUninstall(cwd: string, name: string): Promise<{ ok: boolean; error?: string }>
+  agentListSkillFiles(cwd: string, kind: 'agents' | 'prompts'): Promise<Array<{ name: string; description?: string; path: string }>>
 
   // ---------------------------------------------------------------------------
   // Cross-agent skills
@@ -998,9 +956,6 @@ export interface ElectronAPI {
 
   /** Stream of agent events forwarded from the main process. */
   onAgentEvent(callback: (envelope: AgentEventEnvelope) => void): () => void
-
-  /** Tool-call approvals requested by the agent. */
-  onAgentToolRequest(callback: (req: AgentToolApprovalRequest) => void): () => void
 
   // ---------------------------------------------------------------------------
   // Pi auth / providers

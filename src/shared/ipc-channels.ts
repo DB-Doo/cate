@@ -147,8 +147,6 @@ export const ANALYTICS_FEEDBACK_PROMPT = 'analytics:feedbackPrompt'
 export const ANALYTICS_FEEDBACK_SUBMIT = 'analytics:feedbackSubmit'
 // Renderer -> main: user dismissed the modal without submitting.
 export const ANALYTICS_FEEDBACK_DISMISS = 'analytics:feedbackDismiss'
-// Renderer -> main: user interacted with the feedback modal (first star click or textarea focus).
-export const ANALYTICS_FEEDBACK_ENGAGED = 'analytics:feedbackEngaged'
 // Renderer -> main: pull-based check for pending feedback (returns payload or null).
 export const ANALYTICS_FEEDBACK_GET_PENDING = 'analytics:feedbackGetPending'
 // Renderer -> main: track a promo link click (Product Hunt, GitHub, newsletter).
@@ -172,12 +170,6 @@ export const MENU_TRIGGER_ACTION = 'menu:triggerAction'
 /** Load a named saved layout — main sends the layout name and the focused
  *  renderer restores it (replacing the workspace). */
 export const MENU_LOAD_LAYOUT = 'menu:loadLayout'
-/** Create-panel dispatch routed to a *main* window. Sent when a panel-creation
- *  shortcut/menu item fires from a detached dock/panel window (which has no
- *  canvas): main forwards it to the workspace's main window so the new panel
- *  lands on the canvas. Payload carries the action and the originating
- *  workspace id. */
-export const MENU_CREATE_PANEL = 'menu:createPanel'
 
 /** Browser navigation shortcut (main -> renderer). Sent when a webview guest
  *  swallows a browser key (Cmd+R/[/]/L) via before-input-event, or from the
@@ -315,9 +307,7 @@ export const AGENT_INTERRUPT = 'agent:interrupt'     // renderer -> main
 export const AGENT_DISPOSE = 'agent:dispose'         // renderer -> main
 export const AGENT_SET_MODEL = 'agent:setModel'      // renderer -> main
 export const AGENT_GET_COMMANDS = 'agent:getCommands' // renderer -> main (skills + prompts + extension cmds)
-export const AGENT_TOOL_DECISION = 'agent:toolDecision' // renderer -> main (allow/deny pending tool call)
 export const AGENT_EVENT = 'agent:event'             // main -> renderer (forwarded pi event)
-export const AGENT_TOOL_REQUEST = 'agent:toolRequest' // main -> renderer (approval needed)
 export const AGENT_OPEN_SKILLS_FOLDER = 'agent:openSkillsFolder' // renderer -> main
 export const AGENT_OPEN_SKILL_FILE = 'agent:openSkillFile' // renderer -> main
 export const AGENT_DELETE_SKILL_FILE = 'agent:deleteSkillFile' // renderer -> main
@@ -341,12 +331,6 @@ export const AGENT_UI_RESPONSE = 'agent:uiResponse'            // renderer -> ma
 export const AGENT_LIST_SESSIONS = 'agent:listSessions'         // renderer -> main
 export const AGENT_LOAD_SESSION_MESSAGES = 'agent:loadSessionMessages' // renderer -> main
 export const AGENT_DELETE_SESSION = 'agent:deleteSession'       // renderer -> main
-
-// Pi extension marketplace
-export const AGENT_MARKETPLACE_LIST = 'agent:marketplaceList'             // renderer -> main
-export const AGENT_MARKETPLACE_LIST_INSTALLED = 'agent:marketplaceListInstalled' // renderer -> main
-export const AGENT_MARKETPLACE_INSTALL = 'agent:marketplaceInstall'       // renderer -> main
-export const AGENT_MARKETPLACE_UNINSTALL = 'agent:marketplaceUninstall'   // renderer -> main
 
 // Custom OpenAI-compatible provider (pi models.json)
 export const AGENT_CUSTOM_MODELS_GET = 'agent:customModelsGet'   // renderer -> main

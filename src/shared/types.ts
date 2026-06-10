@@ -637,14 +637,6 @@ export type ShortcutAction =
  *  binding. */
 export type MenuActionId = ShortcutAction | 'openFolder' | 'reloadWorkspace' | 'manageLayouts'
 
-/** Payload for MENU_CREATE_PANEL — a panel-creation action routed to a main
- *  window from a detached dock/panel window, plus the originating workspace so
- *  the panel is created in (and the main window switches to) the right one. */
-export interface MenuCreatePanelPayload {
-  action: MenuActionId
-  workspaceId?: string
-}
-
 /** Browser-panel navigation actions. These are panel-scoped (handled by the
  *  focused BrowserPanel) rather than global shortcuts, so they don't collide
  *  with Monaco keys like Cmd+[ / Cmd+] / Cmd+L. */
@@ -957,13 +949,14 @@ export interface DockStateSnapshot {
   locations: Record<string, PanelLocation>
 }
 
-/** Dock-window sync payload sent renderer -> main for session persistence. */
+/** Dock-window sync payload sent renderer -> main for session persistence.
+ *  Deliberately carries NO workspaceId: the workspace a dock window belongs to
+ *  is owned by main alone (set at window creation in the registry). A renderer
+ *  echo could only ever be the process-local stub id, and overwriting the real
+ *  id would silently drop the window from session.json. */
 export interface DockWindowSyncState {
   dockState: DockStateSnapshot
   panels: Record<string, PanelState>
-  /** Optional: the detached shell does not always echo back its workspace id;
-   *  when absent, main keeps the id set at window creation. */
-  workspaceId?: string
   terminalCwds?: Record<string, string>
   canvasStates?: Record<string, CanvasLayoutSnapshot>
 }
@@ -1481,14 +1474,6 @@ export interface AgentEventEnvelope {
     type: string
     [key: string]: unknown
   }
-}
-
-/** Pending tool-call approval request sent from main to renderer. */
-export interface AgentToolApprovalRequest {
-  panelId: string
-  toolCallId: string
-  toolName: string
-  args: unknown
 }
 
 /** Pi's reasoning levels (mirrors `ThinkingLevel` from pi-agent-core). */

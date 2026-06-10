@@ -19,6 +19,7 @@ import {
 } from './canvasAccess'
 import { getOrCreateCanvasStoreForPanel } from '../../stores/canvasStore'
 import { deferredSnapshots, setDeferredRestoreHandler } from './deferredRestore'
+import { beginRestoreQuiescence } from './sessionAutosave'
 import { terminalRestoreData } from '../terminal/terminalRestoreData'
 import { terminalRegistry } from '../terminal/terminalRegistry'
 import { collectPanelIdsFromDockState, projectFilesToSnapshot } from './sessionSerialize'
@@ -209,12 +210,32 @@ export async function restoreWorkspaceLayout(
   wsId: string,
   opts: { teardown: boolean; remount: boolean },
 ): Promise<void> {
-  if (opts.teardown) useAppStore.getState().closeAllPanels(wsId)
-  await restoreSession(snapshot, wsId)
-  if (opts.remount) useAppStore.getState().bumpReloadEpoch(wsId)
+  // Suppress autosave for the whole rebuild — the teardown's momentary empty
+  // layout is exactly the transient state that must never reach disk.
+  const endQuiescence = beginRestoreQuiescence()
+  try {
+    if (opts.teardown) useAppStore.getState().closeAllPanels(wsId)
+    await restoreSession(snapshot, wsId)
+    if (opts.remount) useAppStore.getState().bumpReloadEpoch(wsId)
+  } finally {
+    endQuiescence()
+  }
 }
 
 export async function restoreSession(snapshot: SessionSnapshot, workspaceId: string): Promise<void> {
+  // Suppress autosave while the stores hydrate: between restorePanelRecords and
+  // loadWorkspaceCanvas the workspace is observably half-built (records without
+  // canvas nodes), and a save scheduled from those store changes would persist
+  // it. One save is scheduled when the (outermost) restore ends.
+  const endQuiescence = beginRestoreQuiescence()
+  try {
+    await restoreSessionHydrate(snapshot, workspaceId)
+  } finally {
+    endQuiescence()
+  }
+}
+
+async function restoreSessionHydrate(snapshot: SessionSnapshot, workspaceId: string): Promise<void> {
   if (!snapshot) {
     log.warn('[session] invalid snapshot, skipping restore')
     return

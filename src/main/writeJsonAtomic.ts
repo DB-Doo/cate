@@ -5,7 +5,8 @@
 // jsonFileStore, store.ts boot snapshot, grantedPathStore, customModels, agentDir)
 // and several were non-atomic (a crash mid-write left a truncated file). This is
 // the one implementation everything routes through:
-//   - writes to `<path>.tmp` then renames over the target (atomic on the same fs).
+//   - writes to a per-write unique `<path>.<pid>.<seq>.tmp` then renames over the
+//     target (atomic on the same fs; unique so concurrent writes can't collide).
 //   - creates the parent dir as needed (with an optional secret 0700 mode).
 //   - optionally chmods the final file to a secret 0600 mode (auth.json etc.).
 //   - cleans up the tmp file on failure.
@@ -17,6 +18,18 @@
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
+
+// Per-write unique temp suffix. A shared `<file>.tmp` is unsafe when two writes
+// to the same path overlap: one consumes the tmp, the other's rename races and
+// can interleave so older content lands last (or fails with ENOENT). Uniquify so
+// every write owns its own tmp file and renames are independent. (Mirrors the
+// projectWorkspaceStore uniqueTmpPath approach; kept here so every caller of the
+// shared primitive is collision-safe by default, no opt-in required.)
+let tmpSeq = 0
+function uniqueTmpPath(filePath: string): string {
+  tmpSeq = (tmpSeq + 1) & 0x7fffffff
+  return `${filePath}.${process.pid}.${tmpSeq}.tmp`
+}
 
 export interface WriteJsonAtomicOptions {
   /** File mode for the written file (e.g. 0o600 for secrets). The parent dir is
@@ -43,7 +56,7 @@ export async function writeTextAtomic(
   options: Pick<WriteJsonAtomicOptions, 'mode'> = {},
 ): Promise<void> {
   const { mode } = options
-  const tmp = filePath + '.tmp'
+  const tmp = uniqueTmpPath(filePath)
   const dirMode = mode !== undefined ? 0o700 : undefined
   await fsp.mkdir(path.dirname(filePath), { recursive: true, ...(dirMode !== undefined ? { mode: dirMode } : {}) })
   try {
@@ -65,7 +78,7 @@ export function writeTextAtomicSync(
   options: Pick<WriteJsonAtomicOptions, 'mode'> = {},
 ): void {
   const { mode } = options
-  const tmp = filePath + '.tmp'
+  const tmp = uniqueTmpPath(filePath)
   const dirMode = mode !== undefined ? 0o700 : undefined
   fs.mkdirSync(path.dirname(filePath), { recursive: true, ...(dirMode !== undefined ? { mode: dirMode } : {}) })
   try {

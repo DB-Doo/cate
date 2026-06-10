@@ -49,6 +49,7 @@ export function ChatInput({
   compactionActive,
   planModeActive,
   onTogglePlanMode,
+  onSlashOpen,
   placeholder: placeholderOverride,
 }: {
   draft: string
@@ -73,6 +74,10 @@ export function ChatInput({
   compactionActive: boolean
   planModeActive: boolean
   onTogglePlanMode: () => void
+  /** Fired when the slash-command popup opens (draft starts a `/command`), so the
+   *  parent can refresh the command list — picks up newly-installed skills
+   *  without reopening the panel. */
+  onSlashOpen?: () => void
   placeholder?: string
 }) {
   useEffect(() => {
@@ -89,6 +94,16 @@ export function ChatInput({
     if (draft.includes(' ') || draft.includes('\n')) return null
     return draft.slice(1).toLowerCase()
   }, [draft])
+
+  // On the leading edge of a slash command (the user just typed "/"), ask the
+  // parent to refresh the command list so freshly-installed skills/prompts show
+  // up without reopening the panel. Fires once per open, not per keystroke.
+  const slashWasOpen = useRef(false)
+  useEffect(() => {
+    const open = slashMatch != null
+    if (open && !slashWasOpen.current) onSlashOpen?.()
+    slashWasOpen.current = open
+  }, [slashMatch, onSlashOpen])
 
   const filteredCommands = useMemo(() => {
     if (slashMatch == null) return []
@@ -201,10 +216,7 @@ export function ChatInput({
           placeholder={
             compactionActive
               ? 'Compacting context…'
-              : placeholderOverride ??
-                (running
-                  ? 'Steer the agent…  (queues a course-correct mid-turn)'
-                  : 'Message the agent…  (type / for skills, paste/drop images)')
+              : placeholderOverride ?? (running ? 'Steer the agent…' : 'Message the agent…')
           }
           rows={1}
           className="w-full bg-transparent px-3 py-2 text-[13px] text-primary outline-none resize-none placeholder:text-muted disabled:opacity-50"

@@ -111,6 +111,7 @@ import {
   readDir as capReadDir,
   searchFiles as capSearchFiles,
   importEntriesInto as capImportEntriesInto,
+  createFsIgnoreMatcher,
 } from '../../companion/capabilities/file'
 export function readDir(dirPath: string): Promise<FileTreeNode[]> {
   return capReadDir(dirPath, currentExclusionSet())
@@ -155,32 +156,20 @@ function encodeTreeNodes(companionId: string, nodes: FileTreeNode[]): FileTreeNo
   }))
 }
 
-// Chokidar ignore list: always-hidden dotfiles plus the user's exclusions.
-//
-// Each exclusion emits two globs so the watcher's notion of "excluded" matches
-// readDir/searchFiles, which drop any entry whose basename is in the set — a
-// folder, the files inside it, or a same-named file. The first glob (`**/<name>`)
-// matches the entry itself at any depth (picomatch lets a leading `**/` match
-// zero dirs); the second (`**/<name>/**`) matches everything beneath an excluded
-// folder. Glob metacharacters in `name` are rejected at the settings input, so
-// these patterns only ever match a literal path segment.
-function buildIgnoreList(): Array<RegExp | string> {
-  return [
-    /(^|[/\\])\../, // hidden files
-    ...getSettingSync('fileExclusions').flatMap((name) => [`**/${name}`, `**/${name}/**`]),
-  ]
-}
-
 /**
  * Create a chokidar watcher rooted at `dirPath` and wire its raw events to fan
  * out to `subscribers`. The Map is captured by reference, so subscribers added
  * after creation (and across watcher recreation) are honored.
  */
 function createWatcher(dirPath: string, subscribers: Map<string, SubscriberEntry>): FSWatcher {
+  // Watch the full tree (no `depth` cap): every consumer of a root watch — the
+  // editor's external-reload, the explorer tree refresh, the git status store —
+  // assumes events arrive for nested paths too. Hidden dirs and the user's
+  // exclusions (node_modules, caches, …) are pruned by the ignore matcher, so
+  // recursion stays affordable.
   const watcher = watch(dirPath, {
     ignoreInitial: true,
-    depth: 1,
-    ignored: buildIgnoreList(),
+    ignored: createFsIgnoreMatcher(dirPath, currentExclusionSet()),
   })
   const fanOut = (type: string, fp: string) => {
     for (const sub of subscribers.values()) {
@@ -319,6 +308,7 @@ export function refreshWatcherIgnores(): void {
 type InProcListener = (filePath: string, type: FsChangeType) => void
 
 interface InProcSub {
+  id: number
   prefix: string
   listener: InProcListener
   // Reverse-lookup of (watcherRoot, key) we've attached to so we can detach
@@ -330,7 +320,7 @@ let inProcSeq = 0
 const inProcSubs: Map<number, InProcSub> = new Map()
 
 function attachInProcToWatcher(sub: InProcSub, root: string, shared: SharedWatcher): void {
-  const key = `inproc:${inProcSeq}-${root}`
+  const key = `inproc:${sub.id}-${root}`
   shared.subscribers.set(key, {
     prefix: sub.prefix,
     // No coalescing here — in-process consumers are expected to debounce
@@ -352,7 +342,7 @@ function attachInProcToWatcher(sub: InProcSub, root: string, shared: SharedWatch
  */
 export function subscribeFsChanges(prefix: string, listener: InProcListener): () => void {
   const id = ++inProcSeq
-  const sub: InProcSub = { prefix, listener, attachments: [] }
+  const sub: InProcSub = { id, prefix, listener, attachments: [] }
   inProcSubs.set(id, sub)
 
   for (const [root, shared] of sharedWatchers) {

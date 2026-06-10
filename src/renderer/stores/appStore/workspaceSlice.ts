@@ -350,11 +350,19 @@ export function createWorkspaceSlice(set: AppSet, get: AppGet): WorkspaceSliceAc
     duplicateWorkspace(wsId) {
       const ws = get().workspaces.find((w) => w.id === wsId)
       if (!ws) return wsId
+      // Carry the fields that make the workspace point at the same project: a
+      // remote workspace must stay reconnectable (connection), and the extra repos
+      // (additionalRoots) + managed worktrees must come along — otherwise a remote
+      // duplicate degrades to a broken non-reconnectable local one and a
+      // multi-root/worktree workspace loses everything but its primary root.
       const copy: WorkspaceState = {
         id: generateId(),
         name: `${ws.name} Copy`,
         color: ws.color,
         rootPath: ws.rootPath,
+        connection: ws.connection,
+        additionalRoots: ws.additionalRoots ? [...ws.additionalRoots] : undefined,
+        worktrees: ws.worktrees ? ws.worktrees.map((wt) => ({ ...wt })) : undefined,
         panels: {},
       }
       set((state) => ({ workspaces: [...state.workspaces, copy] }))

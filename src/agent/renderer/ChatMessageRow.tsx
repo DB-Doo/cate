@@ -12,7 +12,7 @@ import { Copy } from '@phosphor-icons/react'
 import { useRenderCount } from '../../renderer/lib/perf/perfClient'
 import type { AgentMessage } from './agentStore'
 import { Markdown, CursorBlink } from './ChatMarkdown'
-import { ToolCard } from './ChatToolCard'
+import { ToolCard, AskUserToolView } from './ChatToolCard'
 import { SubagentCard } from './ChatSubagentCard'
 import { PlanReadyCard } from './ChatPlanCard'
 import { formatTime } from './chatShared'
@@ -105,6 +105,9 @@ export const MessageRow = memo(function MessageRow({
   }
   if (msg.type === 'tool' && msg.name === 'subagent') {
     return <SubagentCard msg={msg} shimmer={shimmer} />
+  }
+  if (msg.type === 'tool' && msg.name === 'ask_user') {
+    return <AskUserToolView msg={msg} shimmer={shimmer} />
   }
   if (msg.type === 'tool' && msg.name === 'plan_complete') {
     return (

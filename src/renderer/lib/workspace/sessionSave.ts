@@ -193,13 +193,27 @@ export async function saveSession(): Promise<void> {
   // workspace. Local writes to local disk; remote routes through the companion to
   // the remote repo's .cate/ (projectStateSave is locator-aware). This is what
   // lets a closed remote workspace restore on reopen, exactly like local.
-  const workspacesByRoot = new Map(
-    persistableWorkspaces.filter((w) => w.rootPath).map((w) => [w.rootPath, w]),
-  )
+  // One owner workspace per root. When two share a root (a duplicated workspace),
+  // the SELECTED one owns the write so the live/active layout is what persists;
+  // otherwise the first in order owns it, deterministically.
+  const workspacesByRoot = new Map<string, typeof persistableWorkspaces[number]>()
+  for (const w of persistableWorkspaces) {
+    if (!w.rootPath) continue
+    const existing = workspacesByRoot.get(w.rootPath)
+    if (!existing || w.id === updatedState.selectedWorkspaceId) {
+      workspacesByRoot.set(w.rootPath, w)
+    }
+  }
   for (const snapshot of snapshots) {
     if (!snapshot.rootPath) continue
 
     const ws = workspacesByRoot.get(snapshot.rootPath)
+    // A single owner workspace per root writes its .cate/ files. Two workspaces
+    // duplicated onto one rootPath would otherwise each write a different layout
+    // every tick — the rootPath-keyed dedup never settles, .cate/workspace.json
+    // flip-flops, and one layout is lost on restart. Skip the non-owner snapshot;
+    // the owner (the selected one, else the first in order) wins.
+    if (ws && ws.id !== snapshot.workspaceId) continue
     const wsFile = buildWorkspaceFile(snapshot, snapshot.rootPath, ws?.color)
 
     // Filter detached dock windows belonging to this workspace
