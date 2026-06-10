@@ -62,6 +62,30 @@ export async function mkdirEntry(safePath: string): Promise<void> {
 }
 
 /**
+ * Build a chokidar `ignored` predicate for a watcher rooted at `rootPath`.
+ * chokidar v4 dropped glob support, so this must be a function, not glob
+ * strings. A path is ignored when any segment BELOW the watch root is hidden
+ * (leading dot) or is in `excluded` — matching readDir/searchFiles, which drop
+ * any entry whose basename is in the set. Only the part below the root is
+ * judged so a dotted or excluded segment in the root's own absolute path
+ * (e.g. a workspace under ~/.config) doesn't silence the whole tree. Returning
+ * true for a directory stops chokidar from descending into it, which keeps a
+ * recursive watch cheap even with huge excluded trees. Shared by the local
+ * watcher pool (main/ipc/filesystem.ts) and the daemon's watch capability.
+ */
+export function createFsIgnoreMatcher(rootPath: string, excluded: ReadonlySet<string>): (filePath: string) => boolean {
+  return (filePath: string) => {
+    if (filePath.length <= rootPath.length || !filePath.startsWith(rootPath)) return false
+    const sep = filePath.charCodeAt(rootPath.length)
+    if (sep !== 47 /* '/' */ && sep !== 92 /* '\\' */) return false
+    for (const segment of filePath.slice(rootPath.length + 1).split(/[/\\]/)) {
+      if (segment.charCodeAt(0) === 46 /* '.' */ || excluded.has(segment)) return true
+    }
+    return false
+  }
+}
+
+/**
  * Read a single level of a directory, building FileTreeNode[]. Skips hidden
  * files, the supplied exclusion set (matched by basename), and symlinks. Sorts
  * directories first, then files, each case-insensitive.

@@ -15,6 +15,7 @@ import type { BrowserShortcutAction } from '../../shared/types'
 import type { NativeContextMenuItem } from '../../shared/electron-api'
 import { portalRegistry } from '../lib/portalRegistry'
 import { isUrl, normalizeUrl } from './browserUrl'
+import { pageLoadErrorFrom } from './browserLoadError'
 
 // -----------------------------------------------------------------------------
 // Type declarations for Electron's <webview> element
@@ -129,6 +130,32 @@ export default function BrowserPanel({
   const [crashed, setCrashed] = useState(false)
   const [screenshot, setScreenshot] = useState<{ dataUrl: string; filePath: string } | null>(null)
   const screenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // A dock tab stack renders only its active tab and REUSES this component
+  // instance when the slot switches between two browser panels (same type, no
+  // React key, so A and B reconcile as one instance). Our webview src + nav
+  // state are seeded once at mount, so a reused slot would keep showing the
+  // PREVIOUS browser's page — the "press +/split, then open the new tab and it
+  // renders the first one" bug. Re-seed every per-panel field the moment the
+  // slot switches panels. Done during render (React's "reset state when a prop
+  // changes" pattern) so the panelId-keyed <webview> below mounts straight to
+  // the new URL with no intermediate load of the old page. Editor/terminal
+  // panels stay correct the same way, via their own identity props/effects.
+  const [seededPanelId, setSeededPanelId] = useState(panelId)
+  if (seededPanelId !== panelId) {
+    setSeededPanelId(panelId)
+    setActiveProxy(proxyUrl)
+    setWebviewSrc(initialUrl)
+    setCurrentUrl(initialUrl)
+    setInputUrl(initialUrl)
+    currentUrlRef.current = initialUrl
+    setCanGoBack(false)
+    setCanGoForward(false)
+    setIsLoading(false)
+    setLoadError(null)
+    setCrashed(false)
+    setScreenshot(null)
+  }
 
   // -------------------------------------------------------------------------
   // Navigation helpers
@@ -414,9 +441,10 @@ export default function BrowserPanel({
     }
 
     const onDidFailLoad = (event: any) => {
-      // errorCode -3 is a cancelled load (e.g. navigating away mid-load), ignore it
-      if (event.errorCode === -3) return
-      const description = event.errorDescription || 'Failed to load page'
+      // Only main-frame failures are page errors; subframe failures (blocked
+      // trackers, dead embeds) and aborted loads must not hide a working page.
+      const description = pageLoadErrorFrom(event)
+      if (description === null) return
       setLoadError(description)
       setIsLoading(false)
     }
@@ -446,25 +474,12 @@ export default function BrowserPanel({
       setIsLoading(false)
     }
 
-    const onWillNavigate = (event: any) => {
-      try {
-        const { protocol } = new URL(event.url)
-        if (protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') {
-          event.preventDefault()
-          console.warn('[BrowserPanel] Blocked navigation to non-http(s)/file URL:', event.url)
-        }
-      } catch {
-        event.preventDefault()
-      }
-    }
-
-    const onNewWindow = (event: any) => {
-      event.preventDefault()
-      const url = event.url ?? event.detail?.url
-      if (url) {
-        console.log('[BrowserPanel] Blocked new-window for URL:', url)
-      }
-    }
+    // Navigation/new-window enforcement lives in the main process on the guest
+    // webContents (will-navigate + setWindowOpenHandler in main/webSecurity.ts).
+    // The matching <webview> DOM events here never let preventDefault() take
+    // effect (and `new-window` was removed from the tag in Electron 22), so
+    // handling them in the renderer is dead code that would falsely imply the
+    // policy is enforced here.
 
     // Register with the portal registry once the guest webContents is live.
     // dom-ready is the first event for which getWebContentsId() returns a
@@ -481,8 +496,6 @@ export default function BrowserPanel({
     webview.addEventListener('did-fail-load', onDidFailLoad)
     webview.addEventListener('did-start-loading', onDidStartLoading)
     webview.addEventListener('did-stop-loading', onDidStopLoading)
-    webview.addEventListener('will-navigate', onWillNavigate)
-    webview.addEventListener('new-window', onNewWindow)
     webview.addEventListener('render-process-gone', onRenderProcessGone)
     webview.addEventListener('crashed', onCrashed)
 
@@ -495,8 +508,6 @@ export default function BrowserPanel({
       webview.removeEventListener('did-fail-load', onDidFailLoad)
       webview.removeEventListener('did-start-loading', onDidStartLoading)
       webview.removeEventListener('did-stop-loading', onDidStopLoading)
-      webview.removeEventListener('will-navigate', onWillNavigate)
-      webview.removeEventListener('new-window', onNewWindow)
       webview.removeEventListener('render-process-gone', onRenderProcessGone)
       webview.removeEventListener('crashed', onCrashed)
     }
@@ -602,11 +613,13 @@ export default function BrowserPanel({
           />
         )}
 
-        {/* Webview — keyed by partition so a proxy change cleanly remounts it,
-            and only rendered once the proxy session is configured. */}
+        {/* Webview — keyed by panelId + partition so a proxy change OR this slot
+            being reused for a different browser panel cleanly remounts it with a
+            fresh webContents (no inherited page or history). Only rendered once
+            the proxy session is configured. */}
         {proxyReady && (
           <webview
-            key={partition}
+            key={`${panelId}:${partition}`}
             ref={webviewRef as any}
             src={webviewSrc}
             className={`w-full h-full ${loadError || crashed ? 'hidden' : ''}`}

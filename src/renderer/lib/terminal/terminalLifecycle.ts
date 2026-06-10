@@ -321,8 +321,11 @@ export async function getOrCreate(panelId: string, opts: CreateOpts): Promise<Re
       workspaceId: opts.workspaceId,
     })
 
-    // If the entry was disposed while we were waiting, bail out
+    // If the entry was disposed while we were waiting, dispose() couldn't kill
+    // the PTY (ptyId was still '') — kill the freshly-created one here so it
+    // doesn't leak, then bail out.
     if (!registry.has(panelId)) {
+      electronAPI.terminalKill(ptyId).catch((err) => log.warn('[terminal] Kill failed:', err))
       terminal.dispose()
       return entry
     }

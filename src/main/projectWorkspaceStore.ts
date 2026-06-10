@@ -152,34 +152,70 @@ function workspaceNodeCount(data: unknown): number {
 
 // True when writing `incomingNodeCount` nodes over the workspace.json at
 // `rootPath` would replace a non-empty saved canvas with an empty one — the
-// issue #220 data-loss footgun. The sync read keeps the quit-time fallback
-// (saveProjectStateSync) honest without an await.
+// issue #220 data-loss footgun. The async variant reads the richest of
+// primary/.bak so a momentarily-empty primary still counts the .bak's nodes;
+// the sync variant keeps the quit-time fallback (saveProjectStateSync) honest
+// without an await.
+async function wouldEmptyOverwriteWorkspace(rootPath: string, incomingNodeCount: number): Promise<boolean> {
+  if (incomingNodeCount > 0) return false
+  const existing = await readWorkspaceWithFallback(workspacePath(rootPath))
+  return workspaceNodeCount(existing) > 0
+}
+
 function wouldEmptyOverwriteWorkspaceSync(rootPath: string, incomingNodeCount: number): boolean {
   if (incomingNodeCount > 0) return false
   try {
     const existing = JSON.parse(fsSync.readFileSync(workspacePath(rootPath), 'utf-8'))
-    return workspaceNodeCount(existing) > 0
+    if (workspaceNodeCount(existing) > 0) return true
+  } catch {
+    /* primary missing/corrupt — fall through to the .bak check */
+  }
+  // The primary may already have been emptied by an earlier live write; the
+  // rich canvas survives in .bak. Consult it so the quit-time flush never
+  // copies an empty primary over a good .bak.
+  try {
+    const bak = JSON.parse(fsSync.readFileSync(workspacePath(rootPath) + '.bak', 'utf-8'))
+    return workspaceNodeCount(bak) > 0
   } catch {
     return false
   }
 }
 
+// Recovery tiers are primary then .bak. The writers (atomicWrite/atomicWriteSync)
+// no longer leave a fixed `<file>.tmp` behind — they uniquify each tmp as
+// `<file>.<pid>.<seq>.tmp` — so reading that stale name only ever found nothing.
 async function tryReadWithFallback<T>(filePath: string): Promise<T | null> {
   const result = await tryReadJson<T>(filePath)
   if (result) return result
-  const tmp = await tryReadJson<T>(filePath + '.tmp')
-  if (tmp) return tmp
   return tryReadJson<T>(filePath + '.bak')
+}
+
+// Sweep orphaned `<file>.<pid>.<seq>.tmp` files next to `filePath`. A crash
+// between writeFile and rename can leave these behind; they're never re-read
+// (recovery is primary/.bak), so left alone they'd accumulate forever.
+async function cleanOrphanedTmpFiles(filePath: string): Promise<void> {
+  const dir = path.dirname(filePath)
+  const base = path.basename(filePath)
+  const tmpPattern = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.\\d+\\.\\d+\\.tmp$`)
+  try {
+    const entries = await fs.readdir(dir)
+    await Promise.all(
+      entries
+        .filter((name) => tmpPattern.test(name))
+        .map((name) => fs.unlink(path.join(dir, name)).catch(() => {})),
+    )
+  } catch {
+    /* dir gone or unreadable — nothing to sweep */
+  }
 }
 
 // Workspace-aware read (issue #220): the plain primary file can be a valid but
 // *empty* canvas left behind by a wipe. When that happens, prefer the richer of
-// primary / .tmp / .bak so a previously-wiped workspace still recovers its
-// panels on the next load instead of perpetuating the empty state.
+// primary / .bak so a previously-wiped workspace still recovers its panels on
+// the next load instead of perpetuating the empty state.
 async function readWorkspaceWithFallback(filePath: string): Promise<ProjectWorkspaceFile | null> {
   const candidates = await Promise.all([
     tryReadJson<ProjectWorkspaceFile>(filePath),
-    tryReadJson<ProjectWorkspaceFile>(filePath + '.tmp'),
     tryReadJson<ProjectWorkspaceFile>(filePath + '.bak'),
   ])
   let best: ProjectWorkspaceFile | null = null
@@ -208,39 +244,43 @@ function isValidSession(data: unknown): data is ProjectSessionFile {
   return obj.version === 1 && obj.panels != null
 }
 
-export async function saveProjectState(
+// Core local save: serializes the per-root write and applies both disk-boundary
+// guards (external-edit + issue #220 empty-overwrite) before touching
+// workspace.json. The live PROJECT_STATE_SAVE handler is the only caller; it
+// records `lastSavedProjectStates` / acquires the project lock first, then
+// hands the queued write here. Exposed for the production-path tests.
+export async function saveProjectStateLocal(
   rootPath: string,
   workspace: ProjectWorkspaceFile,
   session: ProjectSessionFile,
 ): Promise<void> {
-  // Data-loss backstop (issue #220): never overwrite a non-empty saved canvas
-  // with an empty one. A renderer-side race while activating a deferred
-  // (non-selected) workspace can momentarily serialize an empty canvas; without
-  // this guard that empty snapshot clobbers the good workspace.json/session.json
-  // and the loss is permanent — the empty file is still structurally "valid", so
-  // the .bak fallback is never consulted on the next load. The renderer reads
-  // canvas state straight from the live store (the source of truth), so this
-  // disk-boundary guard is the backstop that also covers deferred/non-selected
-  // workspaces serializing a momentarily-empty canvas.
-  if (workspaceNodeCount(workspace) <= 0) {
-    const existingCount = workspaceNodeCount(await tryReadJson(workspacePath(rootPath)))
-    if (existingCount > 0) {
-      log.warn(
-        'Refusing to overwrite %d-node canvas with an empty one for %s (issue #220 guard)',
-        existingCount,
-        cateDir(rootPath),
-      )
-      return
-    }
-  }
   const wsJson = JSON.stringify(workspace, null, 2)
   const sessJson = JSON.stringify(session, null, 2)
-  await ensureCateGitignore(cateDir(rootPath))
-  await Promise.all([
-    atomicWrite(workspacePath(rootPath), wsJson),
-    atomicWrite(sessionPath(rootPath), sessJson),
-  ])
-  log.debug('Project state saved to %s', cateDir(rootPath))
+  await enqueueSave(rootPath, async () => {
+    await ensureCateGitignore(cateDir(rootPath))
+    // session.json is machine-local and never hand-edited, so always write it.
+    const writes: Promise<void>[] = [atomicWrite(sessionPath(rootPath), sessJson)]
+    if (await workspaceEditedExternallyAsync(rootPath)) {
+      // Hold the overwrite and ask the renderer to prompt for a reload. The
+      // file stays steady until the user reloads or dismisses the prompt.
+      log.info('Skipping workspace.json overwrite for %s — edited externally; prompting reload', cateDir(rootPath))
+      broadcastToAll(WORKSPACE_EXTERNAL_EDIT, { rootPath })
+    } else if (await wouldEmptyOverwriteWorkspace(rootPath, workspaceNodeCount(workspace))) {
+      // Data-loss backstop (issue #220): never overwrite a non-empty saved
+      // canvas with an empty one. A renderer-side race while activating a
+      // deferred (non-selected) workspace can momentarily serialize an empty
+      // canvas; without this guard that empty snapshot clobbers the good
+      // workspace.json and the loss is permanent — the empty file is still
+      // structurally "valid", so the .bak fallback is never consulted on the
+      // next load. This disk-boundary guard is the backstop that also covers
+      // deferred/non-selected workspaces serializing a momentarily-empty canvas.
+      log.warn('Refusing to overwrite a non-empty canvas with an empty one for %s (issue #220 guard)', cateDir(rootPath))
+    } else {
+      writes.push(atomicWrite(workspacePath(rootPath), wsJson).then(() => rememberWorkspaceContent(rootPath, wsJson)))
+    }
+    await Promise.all(writes)
+    log.debug('Project state saved to %s', cateDir(rootPath))
+  })
 }
 
 export async function loadProjectState(rootPath: string): Promise<{
@@ -257,6 +297,11 @@ export async function loadProjectState(rootPath: string): Promise<{
     .then((raw) => rememberWorkspaceContent(rootPath, raw))
     .catch(() => {})
   const sess = await tryReadWithFallback<ProjectSessionFile>(sessionPath(rootPath))
+  // Sweep any orphaned tmp files a crashed write may have left behind.
+  await Promise.all([
+    cleanOrphanedTmpFiles(workspacePath(rootPath)),
+    cleanOrphanedTmpFiles(sessionPath(rootPath)),
+  ])
   return {
     workspace: ws,
     session: sess && isValidSession(sess) ? sess : null,
@@ -274,7 +319,7 @@ export function saveProjectStateSync(): void {
         log.info('Skipping workspace.json sync overwrite for %s — edited externally', cateDir(rootPath))
       } else if (wouldEmptyOverwriteWorkspaceSync(rootPath, workspaceNodeCount(JSON.parse(workspace)))) {
         // issue #220 guard: don't let the quit-time fallback flush an empty
-        // canvas over a good one (mirrors the async saveProjectState guard).
+        // canvas over a good one (mirrors the async saveProjectStateLocal guard).
         log.warn('Refusing empty workspace.json sync overwrite for %s (issue #220 guard)', cateDir(rootPath))
       } else {
         atomicWriteSync(workspacePath(rootPath), workspace)
@@ -414,21 +459,7 @@ export function registerProjectStateHandlers(): void {
         lastSavedProjectStates.delete(rootPath) // keep the quit-time sync fallback out too
         return
       }
-      await enqueueSave(rootPath, async () => {
-        await ensureCateGitignore(cateDir(rootPath))
-        // session.json is machine-local and never hand-edited, so always write it.
-        const writes: Promise<void>[] = [atomicWrite(sessionPath(rootPath), sessJson)]
-        if (await workspaceEditedExternallyAsync(rootPath)) {
-          // Hold the overwrite and ask the renderer to prompt for a reload. The
-          // file stays steady until the user reloads or dismisses the prompt.
-          log.info('Skipping workspace.json overwrite for %s — edited externally; prompting reload', cateDir(rootPath))
-          broadcastToAll(WORKSPACE_EXTERNAL_EDIT, { rootPath })
-        } else {
-          writes.push(atomicWrite(workspacePath(rootPath), wsJson).then(() => rememberWorkspaceContent(rootPath, wsJson)))
-        }
-        await Promise.all(writes)
-        log.debug('Project state saved to %s', cateDir(rootPath))
-      })
+      await saveProjectStateLocal(rootPath, workspace, session)
     },
   )
 

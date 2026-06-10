@@ -64,13 +64,11 @@ export function buildDaemonCompanion(config: DaemonCompanionConfig): DaemonCompa
   const exclusionSet = new Set(config.exclusions ?? [])
   const rgPath = config.rgPath ?? daemonRgPath()
 
-  // The chokidar ignore list: hidden dotfiles + the daemon's live exclusionSet
-  // (two globs per name). Rebuilt from the CURRENT set each time a watcher is
-  // (re)created, so setExclusions takes effect on active watchers too.
-  const buildIgnored = (): Array<RegExp | string> => [
-    /(^|[/\\])\../, // hidden files
-    ...[...exclusionSet].flatMap((name) => [`**/${name}`, `**/${name}/**`]),
-  ]
+  // The chokidar ignore predicate: hidden dotfiles + the daemon's live
+  // exclusionSet. Built fresh (snapshotting the CURRENT set) each time a
+  // watcher is (re)created, so setExclusions takes effect on active watchers
+  // via the rebuild below.
+  const buildIgnored = (rootPath: string) => fileLeaf.createFsIgnoreMatcher(rootPath, new Set(exclusionSet))
 
   // Registry of active fs-watch subscriptions, so setExclusions can rebuild each
   // with the new ignore list. Keyed by a unique handle (an object identity) so a
@@ -85,7 +83,10 @@ export function buildDaemonCompanion(config: DaemonCompanionConfig): DaemonCompa
   // Create a chokidar watcher for `prefix` with the CURRENT ignore list, wiring
   // its add/change/unlink to onChange. Used on first watch and on every rebuild.
   const spawnWatcher = (prefix: string, onChange: (changedPath: string, type: FsChangeType) => void) => {
-    const w = watch(validatePath(prefix), { ignoreInitial: true, depth: 1, ignored: buildIgnored() })
+    // Full-tree watch (no `depth` cap) — clients assume events for nested
+    // paths; the ignore matcher prunes hidden/excluded subtrees.
+    const root = validatePath(prefix)
+    const w = watch(root, { ignoreInitial: true, ignored: buildIgnored(root) })
     w.on('add', (fp) => onChange(fp, 'create'))
     w.on('change', (fp) => onChange(fp, 'update'))
     w.on('unlink', (fp) => onChange(fp, 'delete'))
@@ -124,8 +125,8 @@ export function buildDaemonCompanion(config: DaemonCompanionConfig): DaemonCompa
       // watch returns its unsub synchronously; use the cheap lexical check.
       // Map chokidar's events to the real change type so the client can prune
       // removed entries (not just re-read on every event).
-      // Mirror the in-process createWatcher: hidden dotfiles + the daemon's
-      // exclusionSet (two globs per name) and a depth cap, so the watcher never
+      // Mirror the in-process createWatcher: the shared ignore matcher prunes
+      // hidden dotfiles and the daemon's exclusionSet, so the watcher never
       // floods with node_modules/.git events. Electron-free (no getSettingSync).
       //
       // The watcher is tracked in activeWatches so setExclusions can rebuild it

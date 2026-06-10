@@ -5,6 +5,7 @@ import { SearchView } from './SearchView'
 import { SourceControlView } from './SourceControlView'
 import { useAppStore } from '../stores/appStore'
 import { useUIStore, useSidebarLayout } from '../stores/uiStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import type { SidebarView, SidebarSide } from '../stores/uiStore'
 import {
   FolderOpen,
@@ -89,6 +90,7 @@ interface ActivityBarSidebarProps {
 const ActivityBarSidebar: React.FC<ActivityBarSidebarProps> = ({ side, defaultWidth, minWidth, maxWidth }) => {
   const layout = useSidebarLayout()
   const views = layout[side]
+  const tintOpacity = useSettingsStore((s) => s.sidebarTintOpacity)
   const activeView = useUIStore((s) => (side === 'left' ? s.activeLeftSidebarView : s.activeRightSidebarView))
   const setActiveView = useUIStore((s) =>
     side === 'left' ? s.setActiveLeftSidebarView : s.setActiveRightSidebarView,
@@ -385,8 +387,9 @@ const ActivityBarSidebar: React.FC<ActivityBarSidebarProps> = ({ side, defaultWi
         // compositor to re-sample everything behind the sidebar on every frame
         // that anything underneath changes (a major sustained WindowServer cost
         // given the canvas/terminals behind it). A near-opaque tint reads as the
-        // same frosted surface without the per-frame compositing.
-        backgroundColor: 'color-mix(in srgb, var(--surface-1) 96%, transparent)',
+        // same frosted surface without the per-frame compositing. The fill
+        // percentage is the user's "Background opacity" sidebar setting.
+        backgroundColor: `color-mix(in srgb, var(--surface-1) ${Math.round(tintOpacity * 100)}%, transparent)`,
       }}
     >
       {/* Opaque top strip — matches the dock tab bar height (36px) so the

@@ -36,6 +36,7 @@ import { AGENT_EVENT, AUTH_CHANGED } from '../../shared/ipc-channels'
 import { broadcastToAll } from '../../main/windowRegistry'
 import { installSubagentExtension } from './installSubagents'
 import { installPlanModeExtension } from './installPlanMode'
+import { installAskUserExtension } from './installAskUser'
 import { hostAgentDir, prepareAgentDir, watchWorkspaceAuth, pushSharedToWorkspace } from './agentDir'
 import { mirrorModelsToWorkspace } from './customModels'
 import type { AuthManager } from './authManager'
@@ -128,12 +129,14 @@ export class AgentManager {
       const companion = companions.resolve(companionId)
 
       // Seed the host's <cwd>/.cate/pi-agent: auth.json + models.json via the
-      // companion (so it lands on the remote host too), plus pi's subagent +
-      // plan-mode extensions. PI_CODING_AGENT_DIR points pi at that dir.
+      // companion (so it lands on the remote host too), plus Cate's bundled
+      // extensions (subagent, plan-mode, ask-user). PI_CODING_AGENT_DIR points
+      // pi at that dir.
       await prepareAgentDir(companion, cwd)
       await mirrorModelsToWorkspace(companion, cwd)
       await installSubagentExtension(companion, cwd)
       await installPlanModeExtension(companion, cwd)
+      await installAskUserExtension(companion, cwd)
 
       const extraArgs: string[] = []
       if (opts.sessionFile) extraArgs.push('--session', opts.sessionFile)
@@ -405,21 +408,6 @@ export class AgentManager {
     } catch (err) {
       log.warn('[agentManager] uiResponse failed for %s: %O', panelId, err)
     }
-  }
-
-  /** Tool gating is pi's responsibility now — this remains a no-op so the IPC
-   *  surface stays compatible with the renderer until we wire up real
-   *  preflight via pi's extension hooks. */
-  async toolDecision(
-    panelId: string,
-    toolCallId: string,
-    decision: 'allow' | 'deny',
-    reason?: string,
-  ): Promise<void> {
-    log.debug(
-      '[agentManager] tool decision (no-op) panel=%s tool=%s decision=%s reason=%s',
-      panelId, toolCallId, decision, reason ?? '',
-    )
   }
 
   /** Drop sessions whose sender WebContents has gone away. */

@@ -293,7 +293,7 @@ function placePanel(
   // through and auto-place in the best spot. Explicit-position paths (drag-drop,
   // session restore, right-click "new here") always skip the picker.
   if (isActiveWorkspace && canvasPosition == null && onGhostCancel && useSettingsStore.getState().placementPicker) {
-    const shown = ops.beginPlacement(panelId, panelType, onGhostCancel)
+    const shown = ops.beginPlacement(panelId, panelType, onGhostCancel, canvasSize)
     if (shown) return
   }
   ops.addNodeAndFocus(panelId, panelType, canvasPosition, canvasSize)

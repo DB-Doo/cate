@@ -1,7 +1,7 @@
 // =============================================================================
 // AgentSidebar — chat-list rail for AgentPanel: search box, recents grouped by
-// recency, per-row open/delete, and the settings entry. Pure presentation;
-// all state and IPC live in AgentPanel.
+// recency, per-row open/delete, and the settings entry. Pure presentation; all
+// state and IPC live in AgentPanel.
 // =============================================================================
 
 import { useMemo } from 'react'
@@ -12,6 +12,7 @@ import {
   Trash,
   ChatCircleDots,
   MagnifyingGlass,
+  X,
 } from '@phosphor-icons/react'
 import type { AgentSessionListEntry } from '../../shared/types'
 
@@ -92,8 +93,10 @@ export function AgentSidebar({
                   key={c.path}
                   chat={c}
                   active={c.path === currentSessionFile}
+                  live={openSessionFiles.has(c.path)}
                   onOpen={() => onOpenChat(c.path)}
                   onDelete={() => onDeleteChat(c.path)}
+                  onClose={() => onCloseChat(c.path)}
                 />
               ))}
             </div>
@@ -121,13 +124,17 @@ export function AgentSidebar({
 function ChatRow({
   chat,
   active,
+  live,
   onOpen,
   onDelete,
+  onClose,
 }: {
   chat: AgentSessionListEntry
   active: boolean
+  live: boolean
   onOpen: () => void
   onDelete: () => void
+  onClose: () => void
 }) {
   return (
     <div
@@ -142,7 +149,22 @@ function ChatRow({
       >
         <ChatCircleDots size={11} className={chat.named ? 'text-agent-light shrink-0' : 'text-muted shrink-0'} />
         <span className="truncate text-[11.5px] text-primary">{chat.title}</span>
+        {live && (
+          <span
+            className="ml-auto w-1.5 h-1.5 rounded-full bg-agent-light shrink-0"
+            title="Running in this panel"
+          />
+        )}
       </button>
+      {live && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClose() }}
+          className="p-1 rounded-md text-muted hover:text-primary hover:bg-hover-strong opacity-0 group-hover:opacity-100"
+          title="Close chat (keep on disk)"
+        >
+          <X size={10} />
+        </button>
+      )}
       <button
         onClick={(e) => { e.stopPropagation(); onDelete() }}
         className="p-1 rounded-md text-muted hover:text-primary hover:bg-hover-strong opacity-0 group-hover:opacity-100"

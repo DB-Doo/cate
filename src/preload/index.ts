@@ -82,7 +82,6 @@ import {
   MENU_OPEN_SETTINGS,
   MENU_TRIGGER_ACTION,
   MENU_LOAD_LAYOUT,
-  MENU_CREATE_PANEL,
   BROWSER_SHORTCUT,
   MENU_SHOW_CONTEXT,
   MENU_GET_BAR_ITEMS,
@@ -176,7 +175,6 @@ import {
   ANALYTICS_FEEDBACK_PROMPT,
   ANALYTICS_FEEDBACK_SUBMIT,
   ANALYTICS_FEEDBACK_DISMISS,
-  ANALYTICS_FEEDBACK_ENGAGED,
   ANALYTICS_FEEDBACK_GET_PENDING,
   ANALYTICS_LINK_CLICK,
   ANALYTICS_TRACK_USAGE,
@@ -188,9 +186,7 @@ import {
   AGENT_DISPOSE,
   AGENT_SET_MODEL,
   AGENT_GET_COMMANDS,
-  AGENT_TOOL_DECISION,
   AGENT_EVENT,
-  AGENT_TOOL_REQUEST,
   AGENT_OPEN_SKILLS_FOLDER,
   AGENT_OPEN_SKILL_FILE,
   AGENT_DELETE_SKILL_FILE,
@@ -210,10 +206,6 @@ import {
   AGENT_LIST_SESSIONS,
   AGENT_LOAD_SESSION_MESSAGES,
   AGENT_DELETE_SESSION,
-  AGENT_MARKETPLACE_LIST,
-  AGENT_MARKETPLACE_LIST_INSTALLED,
-  AGENT_MARKETPLACE_INSTALL,
-  AGENT_MARKETPLACE_UNINSTALL,
   AGENT_CUSTOM_MODELS_GET,
   AGENT_CUSTOM_MODELS_SAVE,
   SKILLS_GET_INDEX,
@@ -508,16 +500,11 @@ const invokeForwarders = {
   agentDispose: makeInvoker<'agentDispose'>(AGENT_DISPOSE),
   agentSetModel: makeInvoker<'agentSetModel'>(AGENT_SET_MODEL),
   agentGetCommands: makeInvoker<'agentGetCommands'>(AGENT_GET_COMMANDS),
-  agentToolDecision: makeInvoker<'agentToolDecision'>(AGENT_TOOL_DECISION),
   agentOpenSkillsFolder: makeInvoker<'agentOpenSkillsFolder'>(AGENT_OPEN_SKILLS_FOLDER),
   agentOpenSkillFile: makeInvoker<'agentOpenSkillFile'>(AGENT_OPEN_SKILL_FILE),
   agentDeleteSkillFile: makeInvoker<'agentDeleteSkillFile'>(AGENT_DELETE_SKILL_FILE),
   agentCreateSkill: makeInvoker<'agentCreateSkill'>(AGENT_CREATE_SKILL),
   agentListSkillFiles: makeInvoker<'agentListSkillFiles'>(AGENT_LIST_SKILL_FILES),
-  agentMarketplaceList: makeInvoker<'agentMarketplaceList'>(AGENT_MARKETPLACE_LIST),
-  agentMarketplaceListInstalled: makeInvoker<'agentMarketplaceListInstalled'>(AGENT_MARKETPLACE_LIST_INSTALLED),
-  agentMarketplaceInstall: makeInvoker<'agentMarketplaceInstall'>(AGENT_MARKETPLACE_INSTALL),
-  agentMarketplaceUninstall: makeInvoker<'agentMarketplaceUninstall'>(AGENT_MARKETPLACE_UNINSTALL),
   agentCustomModelsGet: makeInvoker<'agentCustomModelsGet'>(AGENT_CUSTOM_MODELS_GET),
   agentCustomModelsSave: makeInvoker<'agentCustomModelsSave'>(AGENT_CUSTOM_MODELS_SAVE),
 
@@ -853,10 +840,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return createIpcListener(MENU_LOAD_LAYOUT, callback)
   },
 
-  onMenuCreatePanel(callback: (payload: { action: string; workspaceId?: string }) => void): () => void {
-    return createIpcListener(MENU_CREATE_PANEL, callback)
-  },
-
   onBrowserShortcut(callback: (action: string) => void): () => void {
     return createIpcListener(BROWSER_SHORTCUT, callback)
   },
@@ -875,10 +858,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   dismissFeedback(method: string): void {
     ipcRenderer.send(ANALYTICS_FEEDBACK_DISMISS, method)
-  },
-
-  trackFeedbackEngagement(): void {
-    ipcRenderer.send(ANALYTICS_FEEDBACK_ENGAGED)
   },
 
   trackLinkClick(link: string): void {
@@ -903,10 +882,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onAgentEvent(callback: (envelope: unknown) => void): () => void {
     return createIpcListener(AGENT_EVENT, callback)
-  },
-
-  onAgentToolRequest(callback: (req: unknown) => void): () => void {
-    return createIpcListener(AGENT_TOOL_REQUEST, callback)
   },
 
   // ---------------------------------------------------------------------------

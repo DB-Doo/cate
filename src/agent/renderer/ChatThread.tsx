@@ -17,7 +17,6 @@ import {
 } from '@phosphor-icons/react'
 import type { AgentMessage, RetryState } from './agentStore'
 import { MessageRow } from './ChatMessageRow'
-import { ApprovalCard } from './ChatApprovalCard'
 import { LoadingIndicator } from './ChatMarkdown'
 
 // Per-conversation scroll memory — survives the dock-tab unmount/remount cycle.
@@ -26,8 +25,6 @@ const scrollMemory = new Map<string, { top: number; atBottom: boolean }>()
 
 interface ChatThreadProps {
   messages: AgentMessage[]
-  pendingApprovals: { toolCallId: string; toolName: string; args: unknown }[]
-  onApproval: (toolCallId: string, decision: 'allow' | 'deny') => void
   /** Agent is busy. Used to show a "thinking" indicator in the gap between the
    *  user's send and the first assistant token. */
   running: boolean
@@ -48,7 +45,7 @@ interface ChatThreadProps {
   scrollKey: string
 }
 
-export function ChatThread({ messages, pendingApprovals, onApproval, running, forkMap, onFork, onEditResend, onImplementPlan, onRefinePlan, onClearAndImplement, retry, onAbortRetry, scrollKey }: ChatThreadProps) {
+export function ChatThread({ messages, running, forkMap, onFork, onEditResend, onImplementPlan, onRefinePlan, onClearAndImplement, retry, onAbortRetry, scrollKey }: ChatThreadProps) {
   useRenderCount('ChatThread')
   const scrollRef = useRef<HTMLDivElement>(null)
   // Button visibility — init true so it never flashes before the first measure.
@@ -207,13 +204,6 @@ export function ChatThread({ messages, pendingApprovals, onApproval, running, fo
           />
         )
       })}
-      {pendingApprovals.map((req) => (
-        <ApprovalCard
-          key={req.toolCallId}
-          req={req}
-          onDecide={(decision) => onApproval(req.toolCallId, decision)}
-        />
-      ))}
       {showLoading && <LoadingIndicator />}
       {retry && (retry.active || retry.finalError) && (
         <RetryIndicator state={retry} onAbort={onAbortRetry} />
