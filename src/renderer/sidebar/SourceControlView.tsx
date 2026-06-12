@@ -20,7 +20,7 @@ import {
 } from '@phosphor-icons/react'
 import { useAppStore } from '../stores/appStore'
 import { SidebarSectionHeader, SidebarHeaderButton } from './SidebarSectionHeader'
-import { Tooltip } from './Tooltip'
+import { Tooltip } from '../ui/Tooltip'
 import { useGitStatusSnapshot, gitStatusStore } from '../stores/gitStatusStore'
 import { useWorktrees } from '../stores/useWorktrees'
 import { errorMessage } from '../lib/errorMessage'

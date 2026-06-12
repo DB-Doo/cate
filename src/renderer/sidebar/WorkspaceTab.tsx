@@ -20,6 +20,7 @@ import { getAgentLogo } from '../lib/agent/agentLogos'
 import { workspaceDisplayName } from '../lib/fs/displayPath'
 import { workspaceRuntime } from '../lib/workspace/workspaceRuntime'
 import { InlineEditInput } from './InlineEditInput'
+import { Tooltip } from '../ui/Tooltip'
 
 // -----------------------------------------------------------------------------
 // Companion status dot — surfaces a remote workspace's connection state in the
@@ -687,13 +688,15 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
         )}
 
         {/* Hover actions: dots menu (rename happens via clicking the title) */}
-        <button
-          className="flex-shrink-0 w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-80 hover:!opacity-100 text-secondary hover:text-primary transition-opacity focus:outline-none"
-          onClick={(e) => { e.stopPropagation(); handleContextMenu(e) }}
-          title="More actions"
-        >
-          <DotsThree size={14} weight="bold" />
-        </button>
+        <Tooltip label="More actions">
+          <button
+            className="flex-shrink-0 w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-80 hover:!opacity-100 text-secondary hover:text-primary transition-opacity focus:outline-none"
+            onClick={(e) => { e.stopPropagation(); handleContextMenu(e) }}
+            aria-label="More actions"
+          >
+            <DotsThree size={14} weight="bold" />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Tree of canvases + panels (when expanded) */}

@@ -35,6 +35,7 @@ import {
   isLoadFailed,
 } from '../lib/editor/modelCache'
 import { watchFsRoot } from '../lib/fs/fsWatchManager'
+import { Tooltip } from '../ui/Tooltip'
 
 // -----------------------------------------------------------------------------
 // Editor font
@@ -867,19 +868,21 @@ function MarkdownCodeBlock({ children }: { children: ReactNode }) {
       >
         {children}
       </pre>
-      <button
-        onClick={() => {
-          void navigator.clipboard.writeText(preRef.current?.textContent ?? '')
-          setCopied(true)
-          window.setTimeout(() => setCopied(false), 1200)
-        }}
-        title="Copy code"
-        className={`absolute top-1.5 right-1.5 p-1 rounded-md bg-surface-3 text-muted transition-opacity hover:text-primary hover:bg-hover-strong ${
-          copied ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100'
-        }`}
-      >
-        {copied ? <Check size={12} /> : <Copy size={12} />}
-      </button>
+      <Tooltip label="Copy code">
+        <button
+          onClick={() => {
+            void navigator.clipboard.writeText(preRef.current?.textContent ?? '')
+            setCopied(true)
+            window.setTimeout(() => setCopied(false), 1200)
+          }}
+          aria-label="Copy code"
+          className={`absolute top-1.5 right-1.5 p-1 rounded-md bg-surface-3 text-muted transition-opacity hover:text-primary hover:bg-hover-strong ${
+            copied ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+        </button>
+      </Tooltip>
     </div>
   )
 }

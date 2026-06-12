@@ -15,6 +15,7 @@ import { DockTabContextMenu, SPLIT_MENU_ITEMS } from './DockTabContextMenu'
 import type { SplitMenuItem } from './DockTabContextMenu'
 import { useDockTabActions, useAcceptsPanelType } from './useDockTabActions'
 import { setActivePanel } from '../lib/activePanel'
+import { Tooltip } from '../ui/Tooltip'
 import { useDockTabDrag } from './useDockTabDrag'
 import { PANEL_DEFINITIONS } from '../../shared/panels'
 
@@ -281,29 +282,33 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
 
         {/* "+" tab — adds a new tab of the active panel's type into this stack. */}
         {activePanel && (
-          <button
-            className={`flex items-center justify-center self-center rounded text-secondary hover:text-primary hover:bg-hover cursor-pointer ${compact ? 'mx-0.5 my-0.5 w-[18px] h-[18px]' : 'mx-1 my-1 w-[22px] h-[22px]'}`}
-            title={`New ${PANEL_TYPE_LABELS[activePanel.type] ?? 'Tab'}`}
-            onClick={() => actions.addTabOfType(activePanel.type)}
-          >
-            <Plus size={compact ? 12 : 13} />
-          </button>
+          <Tooltip label={`New ${PANEL_TYPE_LABELS[activePanel.type] ?? 'Tab'}`}>
+            <button
+              className={`flex items-center justify-center self-center rounded text-secondary hover:text-primary hover:bg-hover cursor-pointer ${compact ? 'mx-0.5 my-0.5 w-[18px] h-[18px]' : 'mx-1 my-1 w-[22px] h-[22px]'}`}
+              aria-label={`New ${PANEL_TYPE_LABELS[activePanel.type] ?? 'Tab'}`}
+              onClick={() => actions.addTabOfType(activePanel.type)}
+            >
+              <Plus size={compact ? 12 : 13} />
+            </button>
+          </Tooltip>
         )}
 
         {/* Split button. Click splits; click-and-hold opens a type picker. */}
         {activePanelId && (
           <div className={`relative flex items-center self-center ${compact ? 'px-0.5' : 'px-1'}`}>
-            <button
-              ref={splitButtonRef}
-              className={`flex items-center justify-center rounded text-secondary hover:text-primary hover:bg-hover cursor-pointer ${compact ? 'w-[18px] h-[18px]' : 'w-[22px] h-[22px]'}`}
-              title="Split (hold to choose type)"
-              onClick={handleSplitClick}
-              onMouseDown={handleSplitMouseDown}
-              onMouseUp={cancelLongPress}
-              onMouseLeave={cancelLongPress}
-            >
-              <Columns size={compact ? 12 : 14} />
-            </button>
+            <Tooltip label="Split (hold to choose type)">
+              <button
+                ref={splitButtonRef}
+                className={`flex items-center justify-center rounded text-secondary hover:text-primary hover:bg-hover cursor-pointer ${compact ? 'w-[18px] h-[18px]' : 'w-[22px] h-[22px]'}`}
+                aria-label="Split (hold to choose type)"
+                onClick={handleSplitClick}
+                onMouseDown={handleSplitMouseDown}
+                onMouseUp={cancelLongPress}
+                onMouseLeave={cancelLongPress}
+              >
+                <Columns size={compact ? 12 : 14} />
+              </button>
+            </Tooltip>
             <DockTabContextMenu
               open={splitMenuOpen}
               position={splitMenuPos}
