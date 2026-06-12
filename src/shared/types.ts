@@ -741,13 +741,13 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, StoredShortcut> = {
   undo: storedShortcut('z', { command: true }),
   redo: storedShortcut('z', { command: true, shift: true }),
   deleteNode: storedShortcut('Backspace', { command: true }),
-  // ⌃⇧Space toggles the tool from anywhere — including a focused terminal,
+  // ⌃Space toggles the tool from anywhere — including a focused terminal,
   // editor, or input — by being intercepted before the surface sees it. (Plain
-  // Space also toggles, but only when the canvas is focused.) Used to be plain
+  // Space also toggles, but only when the canvas is focused.) Used to be
   // ⇧Space, but Shift is still held when the space after `:` `(` `?` `!` lands,
   // so normal typing kept triggering it and the space never reached the
   // terminal (issue #371).
-  toggleTool: storedShortcut(' ', { shift: true, control: true }),
+  toggleTool: storedShortcut(' ', { control: true }),
   navigateUp: storedShortcut('↑', { command: true }),
   navigateDown: storedShortcut('↓', { command: true }),
   navigateLeft: storedShortcut('←', { command: true }),

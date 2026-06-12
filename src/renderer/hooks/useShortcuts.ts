@@ -226,7 +226,7 @@ export function useShortcuts(): void {
 
       const ui = useUIStore.getState()
 
-      // toggleTool (⌃⇧Space by default) intentionally has no typing-suppression
+      // toggleTool (⌃Space by default) intentionally has no typing-suppression
       // guard: it's the gesture that switches Select/Hand even while a
       // terminal/editor/input is focused. The capture-phase preventDefault below
       // stops the surface from seeing it. Ignore key-repeat so a held chord

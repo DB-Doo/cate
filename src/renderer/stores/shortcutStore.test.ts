@@ -25,18 +25,18 @@ describe('shortcutStore', () => {
     vi.resetModules()
   })
 
-  it('toggleTool defaults to Ctrl+Shift+Space, not Shift+Space (#371)', async () => {
+  it('toggleTool defaults to Ctrl+Space, not Shift+Space (#371)', async () => {
     const { useShortcutStore } = await loadStores()
     const match = useShortcutStore.getState().matchEvent
     expect(match(keyEvent(' ', { shift: true }))).toBeNull()
-    expect(match(keyEvent(' ', { shift: true, ctrl: true }))).toBe('toggleTool')
+    expect(match(keyEvent(' ', { ctrl: true }))).toBe('toggleTool')
   })
 
   it('clearShortcut disables a binding so it never matches (#372)', async () => {
     const { useShortcutStore } = await loadStores()
     useShortcutStore.getState().clearShortcut('toggleTool')
     expect(useShortcutStore.getState().shortcuts.toggleTool.key).toBe('')
-    expect(useShortcutStore.getState().matchEvent(keyEvent(' ', { shift: true, ctrl: true }))).toBeNull()
+    expect(useShortcutStore.getState().matchEvent(keyEvent(' ', { ctrl: true }))).toBeNull()
   })
 
   it('persists only diffs from the defaults into settings (#372)', async () => {

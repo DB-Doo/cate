@@ -279,19 +279,6 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
           onTabBarMouseDown={onTabBarMouseDown}
         />
 
-        {/* Worktree chip — right end of the tab strip, so it never overlaps
-            panel content (#370) and doesn't crowd the active tab's title
-            (#343). Self-hides for non-terminal/agent panels and
-            single-worktree workspaces. */}
-        {activePanel && effectiveWorkspaceId && (
-          <div
-            className="flex items-center self-center shrink-0 px-1"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <WorktreePill panel={activePanel} workspaceId={effectiveWorkspaceId} />
-          </div>
-        )}
-
         {/* "+" tab — adds a new tab of the active panel's type into this stack. */}
         {activePanel && (
           <button
@@ -350,6 +337,15 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
         ) : (
           <div className="flex items-center justify-center h-full text-muted text-sm">
             No panel
+          </div>
+        )}
+        {/* Worktree chip — overlaid on the panel's top-right rather than crammed
+            into the tab strip (where it starved the title). Collapsed to its icon
+            until hovered so it covers almost no content (#370). Self-hides for
+            non-terminal/agent panels and single-worktree workspaces. */}
+        {activePanel && effectiveWorkspaceId && (
+          <div className="absolute top-1.5 right-1.5 z-10">
+            <WorktreePill panel={activePanel} workspaceId={effectiveWorkspaceId} />
           </div>
         )}
       </div>
