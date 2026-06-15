@@ -72,6 +72,19 @@ describe('createFsIgnoreMatcher — unit', () => {
     expect(m('/Users/me/.config/proj/src/a.ts', asFile)).toBe(false)
   })
 
+  it('normalizes separators (Windows: native root, POSIX paths from chokidar)', () => {
+    // chokidar hands the predicate forward-slash paths even on Windows, while the
+    // root arrives OS-native — both must compare equal or the matcher ignores
+    // nothing and the whole tree gets watched.
+    const m = createFsIgnoreMatcher('C:\\proj', EXCLUDED)
+    expect(m('C:\\proj\\.gitignore', asFile)).toBe(false)
+    expect(m('C:/proj/.gitignore', asFile)).toBe(false)
+    expect(m('C:\\proj\\src\\a.ts', asFile)).toBe(false)
+    expect(m('C:/proj/.cate', asDir)).toBe(true)
+    expect(m('C:/proj/.cate/session.json', asFile)).toBe(true)
+    expect(m('C:\\proj\\node_modules\\pkg\\i.js', asFile)).toBe(true)
+  })
+
   it('treats a hidden-dir leaf without stats as not-ignored (chokidar re-asks)', () => {
     // No stats yet → defer (false); chokidar stats it and calls again with
     // stats.isDirectory() === true, which prunes it. Covered live below.
@@ -124,8 +137,14 @@ describe('createFsIgnoreMatcher — live chokidar', () => {
     await fs.appendFile(path.join(dir, '.git', 'HEAD'), 'b\n')
     await fs.appendFile(path.join(dir, 'node_modules', 'pkg', 'i.js'), 'b\n')
 
-    // Let fsevents settle.
-    await new Promise((r) => setTimeout(r, 600))
+    // Wait until the expected events arrive (fs.watch latency varies by OS), then
+    // a short tail so a wrongly-watched path would have had its chance to fire.
+    const want = ['.gitignore', '.env', path.join('src', 'a.ts')]
+    const deadline = Date.now() + 5000
+    while (Date.now() < deadline && !want.every((w) => events.some((e) => e.rel === w))) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    await new Promise((r) => setTimeout(r, 400))
 
     const touched = new Set(events.map((e) => e.rel))
     expect(touched.has('.gitignore')).toBe(true)
@@ -134,5 +153,5 @@ describe('createFsIgnoreMatcher — live chokidar', () => {
     expect(touched.has(path.join('.cate', 'session.json'))).toBe(false)
     expect(touched.has(path.join('.git', 'HEAD'))).toBe(false)
     expect(touched.has(path.join('node_modules', 'pkg', 'i.js'))).toBe(false)
-  }, 10_000)
+  }, 15_000)
 })

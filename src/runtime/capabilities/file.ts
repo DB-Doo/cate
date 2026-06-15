@@ -89,11 +89,16 @@ export function createFsIgnoreMatcher(
   rootPath: string,
   excluded: ReadonlySet<string>,
 ): (filePath: string, stats?: { isDirectory(): boolean }) => boolean {
+  // Normalize separators up front. chokidar hands this predicate POSIX-style
+  // (forward-slash) paths even on Windows, while `rootPath` arrives OS-native
+  // (backslashes), so a raw `startsWith(rootPath)` would never match on Windows
+  // and the matcher would ignore nothing (over-watching the whole tree).
+  const root = rootPath.replace(/\\/g, '/')
   return (filePath: string, stats?: { isDirectory(): boolean }) => {
-    if (filePath.length <= rootPath.length || !filePath.startsWith(rootPath)) return false
-    const sep = filePath.charCodeAt(rootPath.length)
-    if (sep !== 47 /* '/' */ && sep !== 92 /* '\\' */) return false
-    const segments = filePath.slice(rootPath.length + 1).split(/[/\\]/)
+    const fp = filePath.replace(/\\/g, '/')
+    if (fp.length <= root.length || !fp.startsWith(root)) return false
+    if (fp.charCodeAt(root.length) !== 47 /* '/' */) return false
+    const segments = fp.slice(root.length + 1).split('/')
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i]
       if (excluded.has(segment)) return true
