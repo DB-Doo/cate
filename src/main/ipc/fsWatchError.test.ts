@@ -46,7 +46,9 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('chokidar', () => ({ watch: mockState.watch }))
+// The local pool's watcher backend is the recursive-watch adapter (native on
+// macOS/Windows, chokidar on Linux); mock that boundary to drive error events.
+vi.mock('../../runtime/capabilities/recursiveWatch', () => ({ createRecursiveWatcher: mockState.watch }))
 
 vi.mock('../windowRegistry', () => ({
   windowFromEvent: () => ({ id: 1 }),

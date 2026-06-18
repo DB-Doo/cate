@@ -6,10 +6,10 @@
 // daemon registers its workspace root via addAllowedRoot at startup.
 // =============================================================================
 
-import { watch } from 'chokidar'
 import { existsSync } from 'fs'
 import path from 'path'
 import * as fileLeaf from './file'
+import { createRecursiveWatcher, type RecursiveWatcher } from './recursiveWatch'
 import { runRipgrepSearch } from '../search/engine'
 import { createVcsCapability } from './vcs'
 import { createProcessCapability, type ProcessCapability } from './process'
@@ -77,7 +77,7 @@ export function buildDaemonRuntime(config: DaemonRuntimeConfig): DaemonRuntime {
 
   interface SharedWatch {
     root: string
-    watcher: ReturnType<typeof watch>
+    watcher: RecursiveWatcher
     subscribers: Set<WatchSubscriber>
   }
 
@@ -103,10 +103,13 @@ export function buildDaemonRuntime(config: DaemonRuntimeConfig): DaemonRuntime {
 
   // Create a chokidar watcher for `prefix` with the CURRENT ignore list, wiring
   // its add/change/unlink to onChange. Used on first watch and on every rebuild.
-  const spawnWatcher = (shared: SharedWatch) => {
+  const spawnWatcher = (shared: SharedWatch): RecursiveWatcher => {
     // Full-tree watch (no `depth` cap) — clients assume events for nested
-    // paths; the ignore matcher prunes hidden/excluded subtrees.
-    const w = watch(shared.root, { ignoreInitial: true, ignored: buildIgnored(shared.root) })
+    // paths; the ignore matcher prunes hidden/excluded subtrees. On macOS/Windows
+    // this is ONE native recursive handle rather than one fs.watch fd per
+    // directory, which avoids the EMFILE storm on large workspaces (issue #398);
+    // Linux falls back to chokidar.
+    const w = createRecursiveWatcher(shared.root, buildIgnored(shared.root))
     const fanOut = (fp: string, type: FsChangeType) => {
       for (const sub of shared.subscribers) {
         if (pathHasPrefix(fp, sub.prefix)) sub.onChange(fp, type)

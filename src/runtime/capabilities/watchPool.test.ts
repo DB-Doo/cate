@@ -52,7 +52,10 @@ function createMockWatcher(root: string): MockWatcher {
   return watcher
 }
 
-vi.mock('chokidar', () => ({ watch: mockState.watch }))
+// The daemon's watch backend is the recursive-watch adapter (native on
+// macOS/Windows, chokidar on Linux). Mock that boundary so these pool tests
+// exercise dedup/refcount/rebuild logic without a real OS watcher.
+vi.mock('./recursiveWatch', () => ({ createRecursiveWatcher: mockState.watch }))
 
 describe('daemon runtime watch pool', () => {
   beforeEach(() => {

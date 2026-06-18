@@ -2,7 +2,6 @@
 // Filesystem IPC handlers — file read/write and directory watching
 // =============================================================================
 
-import { watch, FSWatcher } from 'chokidar'
 import { ipcMain } from 'electron'
 import log from '../logger'
 import { consumeScopedWriteAllowance, validatePathStrict } from './pathValidation'
@@ -55,7 +54,7 @@ interface SubscriberEntry {
 }
 
 interface SharedWatcher {
-  watcher: FSWatcher
+  watcher: RecursiveWatcher
   refCount: number
   /** Per-subscriber entries keyed by an opaque subscriber key. */
   subscribers: Map<string, SubscriberEntry>
@@ -113,6 +112,7 @@ import {
   importEntriesInto as capImportEntriesInto,
   createFsIgnoreMatcher,
 } from '../../runtime/capabilities/file'
+import { createRecursiveWatcher, type RecursiveWatcher } from '../../runtime/capabilities/recursiveWatch'
 export function readDir(dirPath: string): Promise<FileTreeNode[]> {
   return capReadDir(dirPath, currentExclusionSet())
 }
@@ -157,20 +157,23 @@ function encodeTreeNodes(runtimeId: string, nodes: FileTreeNode[]): FileTreeNode
 }
 
 /**
- * Create a chokidar watcher rooted at `dirPath` and wire its raw events to fan
+ * Create a recursive watcher rooted at `dirPath` and wire its raw events to fan
  * out to `subscribers`. The Map is captured by reference, so subscribers added
  * after creation (and across watcher recreation) are honored.
  */
-function createWatcher(dirPath: string, subscribers: Map<string, SubscriberEntry>): FSWatcher {
+function createWatcher(dirPath: string, subscribers: Map<string, SubscriberEntry>): RecursiveWatcher {
   // Watch the full tree (no `depth` cap): every consumer of a root watch — the
   // editor's external-reload, the explorer tree refresh, the git status store —
   // assumes events arrive for nested paths too. Hidden dirs and the user's
   // exclusions (node_modules, caches, …) are pruned by the ignore matcher, so
-  // recursion stays affordable.
-  const watcher = watch(dirPath, {
-    ignoreInitial: true,
-    ignored: createFsIgnoreMatcher(dirPath, currentExclusionSet()),
-  })
+  // recursion stays affordable. On macOS/Windows this is ONE native recursive
+  // handle (FSEvents / ReadDirectoryChangesW) rather than chokidar's one
+  // fs.watch fd per directory, which exhausted descriptors (EMFILE) on large
+  // workspaces (issue #398); Linux still uses chokidar under the hood.
+  const watcher = createRecursiveWatcher(
+    dirPath,
+    createFsIgnoreMatcher(dirPath, currentExclusionSet()),
+  )
   const fanOut = (type: string, fp: string) => {
     for (const sub of subscribers.values()) {
       if (pathHasPrefix(fp, sub.prefix)) sub.dispatch(type, fp)
@@ -296,7 +299,7 @@ function watchStop(dirPath: string, ownerWindowId: number): void {
 export function refreshWatcherIgnores(): void {
   for (const [dirPath, shared] of sharedWatchers) {
     const old = shared.watcher
-    let next: FSWatcher
+    let next: RecursiveWatcher
     try {
       next = createWatcher(dirPath, shared.subscribers)
     } catch (err) {
