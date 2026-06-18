@@ -180,5 +180,9 @@ describe('worktree session persistence', () => {
     expect(snap.panels?.['dt-1']?.worktreeId).toBe('wt-x')
     // The terminal's working directory is carried for respawn.
     expect(snap.terminalCwds?.['t-1']).toBe(WT_X.path)
+    // The cwd is also re-attached to panel.cwd. TerminalPanel reads panel.cwd
+    // directly, so without this the terminal respawned at the workspace root
+    // instead of its worktree even though the worktree tag survived.
+    expect(snap.panels?.['t-1']?.cwd).toBe(WT_X.path)
   })
 })
