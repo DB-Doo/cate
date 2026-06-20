@@ -184,6 +184,27 @@ describe('createWatchPool — teardown racing subscription resolution', () => {
   })
 })
 
+describe('createWatchPool — closeAll', () => {
+  it('unsubscribes every tree and drops any late events', async () => {
+    const fake = fakeParcel()
+    const pool = createWatchPool(() => [], undefined, { subscribe: fake.subscribe })
+    const onRoot = vi.fn()
+    pool.subscribe(ROOT, onRoot)
+    pool.subscribe(path.resolve('/work/other'), () => {})
+    await flush()
+
+    await pool.closeAll()
+
+    expect(fake.subs[0].unsubscribe).toHaveBeenCalledTimes(1)
+    expect(fake.subs[1].unsubscribe).toHaveBeenCalledTimes(1)
+
+    // A straggler event from a backend that fires after closeAll is ignored.
+    fake.fire(0, [{ path: path.join(ROOT, 'late.ts'), type: 'update' }])
+    await flush()
+    expect(onRoot).not.toHaveBeenCalled()
+  })
+})
+
 describe('createWatchPool — refresh (exclusion change)', () => {
   it('re-subscribes each tree with the CURRENT exclusions and unsubscribes the old', async () => {
     const fake = fakeParcel()
