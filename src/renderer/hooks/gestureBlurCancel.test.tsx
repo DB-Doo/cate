@@ -345,7 +345,7 @@ describe('drag — Escape cancellation', () => {
     })
     const store = scene.getCanvasStore('c1')
     act(() => store.getState().selectNodes(['n1', 'n2'], false))
-    expect(store.getState().selectedNodeIds.size).toBe(2)
+    expect(store.getState().selection.length).toBe(2)
 
     // Begin and arm a drag.
     scene.mouse.downOnNode('n1')
@@ -372,7 +372,7 @@ describe('drag — Escape cancellation', () => {
     expect(scene.drag().isDragging).toBe(false)
     // The keypress was stopped before the global handler — selection intact.
     expect(reachedGlobal).toBe(false)
-    expect(store.getState().selectedNodeIds.size).toBe(2)
+    expect(store.getState().selection.length).toBe(2)
     expect(esc.defaultPrevented).toBe(true)
   })
 })

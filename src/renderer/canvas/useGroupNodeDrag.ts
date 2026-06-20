@@ -26,9 +26,9 @@ export function useGroupNodeDrag(
     (e: React.MouseEvent): boolean => {
       if (e.button !== 0) return false
       const state = canvasApi.getState()
-      const selected = state.selectedNodeIds
+      const selected = state.selection
       // Only take over for a real multi-selection that includes this node.
-      if (selected.size <= 1 || !selected.has(nodeId)) return false
+      if (selected.length <= 1 || !selected.includes(nodeId)) return false
 
       const startOrigins = new Map<string, Point>()
       for (const id of selected) {

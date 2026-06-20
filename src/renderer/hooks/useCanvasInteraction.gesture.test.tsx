@@ -482,6 +482,61 @@ describe('right-drag panning', () => {
 })
 
 // =============================================================================
+// 2b. Marquee selection
+// =============================================================================
+
+const leftDown = (el: HTMLElement, x: number, y: number) => mouse(el, 'mousedown', 0, x, y)
+const winMove = (x: number, y: number) =>
+  act(() => window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true })))
+const winUp = (x: number, y: number) =>
+  act(() =>
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: x, clientY: y, bubbles: true })),
+  )
+
+describe('marquee selection', () => {
+  // Regression: the marquee must suppress iframe/webview/monaco/xterm hit-testing
+  // (via the shared `canvas-interacting` body class) like every other canvas
+  // gesture. Without it, the cursor crossing onto the FOCUSED panel — whose dim
+  // overlay is pointer-events:none — lets that panel's content swallow the
+  // window-level mousemove/mouseup, freezing and mis-selecting the marquee.
+  it('holds canvas-interacting for the duration of a marquee drag', () => {
+    const { el } = setupScene()
+
+    leftDown(el, 100, 100)
+    // A bare press (no drag yet) must not suppress panel hit-testing.
+    expect(document.body.classList.contains('canvas-interacting')).toBe(false)
+
+    winMove(120, 120) // > 4px → the drag (and marquee) begins
+    expect(document.body.classList.contains('canvas-interacting')).toBe(true)
+
+    winMove(180, 160)
+    expect(document.body.classList.contains('canvas-interacting')).toBe(true)
+
+    winUp(180, 160)
+    expect(document.body.classList.contains('canvas-interacting')).toBe(false)
+  })
+
+  it('does not leave canvas-interacting set after a click without a drag', () => {
+    const { el } = setupScene()
+
+    leftDown(el, 100, 100)
+    winUp(101, 101) // < 4px → not a drag
+    expect(document.body.classList.contains('canvas-interacting')).toBe(false)
+  })
+
+  it('releases canvas-interacting if the window blurs mid-marquee', () => {
+    const { el } = setupScene()
+
+    leftDown(el, 100, 100)
+    winMove(140, 140)
+    expect(document.body.classList.contains('canvas-interacting')).toBe(true)
+
+    act(() => window.dispatchEvent(new Event('blur')))
+    expect(document.body.classList.contains('canvas-interacting')).toBe(false)
+  })
+})
+
+// =============================================================================
 // 3. Momentum / inertia
 // =============================================================================
 

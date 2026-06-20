@@ -19,6 +19,7 @@ import { useNodeResize } from '../hooks/useNodeResize'
 import { useCanvasNodeStyle } from './useCanvasNodeStyle'
 import { useCanvasNodeDrag } from './useCanvasNodeDrag'
 import { useGroupNodeDrag } from './useGroupNodeDrag'
+import { isSelected as isNodeSelected } from '../stores/canvas/selectionModel'
 import { useNodeResizeCursor } from './useNodeResizeCursor'
 import { NodeResizeOverlay } from './NodeResizeOverlay'
 import type { DockStore } from '../stores/dockStore'
@@ -172,7 +173,7 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
   const focusNode = useCanvasStoreContext((s) => s.focusNode)
   const removeNode = useCanvasStoreContext((s) => s.removeNode)
   const toggleMaximize = useCanvasStoreContext((s) => s.toggleMaximize)
-  const isSelected = useCanvasStoreContext((s) => s.selectedNodeIds.has(nodeId))
+  const isSelected = useCanvasStoreContext((s) => isNodeSelected(s, nodeId))
   const isDockDragging = useDragStore((s) => s.isDragging)
   const { hidden: isWholeNodeDragSource } = useDragSourceVisibility(nodeId)
 

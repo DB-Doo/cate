@@ -9,6 +9,7 @@ import { Globe, ArrowLeft, ArrowRight, ArrowClockwise, Camera, MagnifyingGlass, 
 import { useSettingsStore } from '../stores/settingsStore'
 import { useAppStore } from '../stores/appStore'
 import { useCanvasStoreContext } from '../stores/CanvasStoreContext'
+import { focusedNodeId } from '../stores/canvas/selectionModel'
 import { SEARCH_ENGINE_URLS } from '../../shared/types'
 import type { BrowserPanelProps } from './types'
 import type { BrowserShortcutAction } from '../../shared/types'
@@ -90,7 +91,7 @@ export default function BrowserPanel({
   const updatePanelUrl = useAppStore((s) => s.updatePanelUrl)
   const updatePanelProxy = useAppStore((s) => s.updatePanelProxy)
 
-  const isFocused = useCanvasStoreContext((s) => s.focusedNodeId === nodeId)
+  const isFocused = useCanvasStoreContext((s) => focusedNodeId(s) === nodeId)
 
   const rawInitialUrl = url || browserHomepage || 'https://www.google.com'
   const initialUrl = rawInitialUrl.startsWith('about:') ? rawInitialUrl : normalizeUrl(rawInitialUrl)
