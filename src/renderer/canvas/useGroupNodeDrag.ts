@@ -10,6 +10,7 @@ import React, { useCallback } from 'react'
 import type { Point } from '../../shared/types'
 import type { useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import { acquireBodyClass, releaseBodyClass } from '../lib/dom/bodyClassRefcount'
+import { isGroupDragMember } from '../stores/canvas/selectionModel'
 
 const DEAD_ZONE_PX = 4
 
@@ -28,7 +29,7 @@ export function useGroupNodeDrag(
       const state = canvasApi.getState()
       const selected = state.selection
       // Only take over for a real multi-selection that includes this node.
-      if (selected.length <= 1 || !selected.includes(nodeId)) return false
+      if (!isGroupDragMember(selected, nodeId)) return false
 
       const startOrigins = new Map<string, Point>()
       for (const id of selected) {

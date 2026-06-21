@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { createCanvasStore } from '../canvasStore'
-import { focusedNodeId, isSelected, withLead } from './selectionModel'
+import { focusedNodeId, isSelected, withLead, isGroupDragMember } from './selectionModel'
 
 function addThree() {
   const store = createCanvasStore()
@@ -34,6 +34,27 @@ describe('focusedNodeId derivation', () => {
     expect(focusedNodeId({ selection: ['x'], selectionActive: false })).toBeNull()
     expect(focusedNodeId({ selection: ['x'], selectionActive: true })).toBe('x')
     expect(focusedNodeId({ selection: ['x', 'y'], selectionActive: true })).toBe('y')
+  })
+})
+
+describe('isGroupDragMember', () => {
+  // This predicate is the contract between CanvasNode's capture-phase focus
+  // guard (which must BAIL when true) and useGroupNodeDrag's takeover (which
+  // must FIRE when true). If they disagree, a press on a selected panel's title
+  // bar focuses+collapses to that one node before the group drag reads the
+  // selection — so only the grabbed panel moves.
+  it('is true only for a member of a real multi-selection', () => {
+    expect(isGroupDragMember(['a', 'b'], 'a')).toBe(true)
+    expect(isGroupDragMember(['a', 'b', 'c'], 'c')).toBe(true)
+  })
+  it('is false for a single-node selection (plain focus/drag, no group)', () => {
+    expect(isGroupDragMember(['a'], 'a')).toBe(false)
+  })
+  it('is false when the grabbed node is outside the selection', () => {
+    expect(isGroupDragMember(['a', 'b'], 'c')).toBe(false)
+  })
+  it('is false for an empty selection', () => {
+    expect(isGroupDragMember([], 'a')).toBe(false)
   })
 })
 

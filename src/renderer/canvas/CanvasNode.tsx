@@ -19,7 +19,7 @@ import { useNodeResize } from '../hooks/useNodeResize'
 import { useCanvasNodeStyle } from './useCanvasNodeStyle'
 import { useCanvasNodeDrag } from './useCanvasNodeDrag'
 import { useGroupNodeDrag } from './useGroupNodeDrag'
-import { isSelected as isNodeSelected } from '../stores/canvas/selectionModel'
+import { isSelected as isNodeSelected, isGroupDragMember } from '../stores/canvas/selectionModel'
 import { useNodeResizeCursor } from './useNodeResizeCursor'
 import { NodeResizeOverlay } from './NodeResizeOverlay'
 import type { DockStore } from '../stores/dockStore'
@@ -709,6 +709,14 @@ const CanvasNode: React.FC<CanvasNodeProps> = ({
             style={{ position: 'relative', zIndex: 0, width: '100%', height: '100%' }}
             onMouseDownCapture={(e) => {
               if (e.button !== 0 || isFocused) return
+              // When this node is part of a live multi-selection, a press on it
+              // starts a GROUP drag (handled in the bubble phase by the tab-bar /
+              // overlay handlers via startGroupDrag). Focusing here would run
+              // first (capture beats bubble) and collapse the selection to just
+              // this node — so the group drag would then read a single-node
+              // selection and move only this one. Bail and leave it to the group
+              // path; a no-drag click still focuses via handleClick.
+              if (isGroupDragMember(canvasApi.getState().selection, nodeId)) return
               focusThisNode()
             }}
           >
