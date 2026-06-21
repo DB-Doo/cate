@@ -43,8 +43,6 @@ const SETTINGS_SCHEMA: Record<keyof AppSettings, string> = {
   uiScale: 'number',
   disableGpuRasterization: 'boolean',
   showMinimap: 'boolean',
-  defaultPanelWidth: 'number',
-  defaultPanelHeight: 'number',
   zoomSpeed: 'number',
   autoFocusLargestVisibleNode: 'boolean',
   canvasGridStyle: 'string',
