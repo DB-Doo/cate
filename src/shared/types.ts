@@ -29,7 +29,7 @@ export interface Rect {
 // Panel types
 // -----------------------------------------------------------------------------
 
-export type PanelType = 'terminal' | 'browser' | 'editor' | 'canvas' | 'agent' | 'document'
+export type PanelType = 'terminal' | 'browser' | 'editor' | 'canvas' | 'agent' | 'document' | 'missionControl'
 
 // -----------------------------------------------------------------------------
 // Canvas node
@@ -612,6 +612,7 @@ export type ShortcutAction =
   | 'newBrowser'
   | 'newEditor'
   | 'newAgent'
+  | 'newMissionControl'
   | 'newCanvas'
   | 'newFile'
   | 'closePanel'
@@ -696,6 +697,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   'newBrowser',
   'newEditor',
   'newAgent',
+  'newMissionControl',
   'newCanvas',
   'newFile',
   'closePanel',
@@ -732,6 +734,7 @@ export const SHORTCUT_DISPLAY_NAMES: Record<ShortcutAction, string> = {
   newBrowser: 'New Browser',
   newEditor: 'New Editor',
   newAgent: 'New Cate Agent',
+  newMissionControl: 'New Mission Control',
   newCanvas: 'New Canvas',
   newFile: 'New File',
   closePanel: 'Close Panel',
@@ -768,6 +771,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, StoredShortcut> = {
   newBrowser: storedShortcut('b', { command: true, shift: true }),
   newEditor: storedShortcut('e', { command: true, shift: true }),
   newAgent: storedShortcut('a', { command: true, shift: true }),
+  newMissionControl: storedShortcut('', {}),
   newCanvas: storedShortcut('c', { command: true, shift: true }),
   newFile: storedShortcut('n', { command: true }),
   closePanel: storedShortcut('w', { command: true }),
@@ -1469,6 +1473,7 @@ export const PANEL_CANVAS_DROP_SIZES: Record<PanelType, Size> = {
   canvas: { width: 640, height: 480 },
   agent: { width: 520, height: 440 },
   document: { width: 640, height: 480 },
+  missionControl: { width: 640, height: 480 },
 }
 
 // -----------------------------------------------------------------------------

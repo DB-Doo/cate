@@ -108,6 +108,12 @@ export async function runAction(
       if (wsId) appStore().createAgent(wsId, undefined, placement)
       break
     }
+    case 'newMissionControl': {
+      const placement = placementForActivePanel()
+      const wsId = await ensureWorkspaceFolder(selectedWorkspaceId)
+      if (wsId) appStore().createMissionControl(wsId, undefined, placement)
+      break
+    }
     case 'newCanvas': {
       const placement = placementForActivePanel()
       const wsId = await ensureWorkspaceFolder(selectedWorkspaceId)

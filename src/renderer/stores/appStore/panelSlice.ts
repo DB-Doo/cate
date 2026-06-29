@@ -38,6 +38,7 @@ type PanelSliceActions = Pick<
   | 'createCanvas'
   | 'createAgent'
   | 'createDocument'
+  | 'createMissionControl'
   | 'closePanel'
   | 'updatePanelTitle'
   | 'updatePanelTitleFromAgent'
@@ -171,6 +172,16 @@ export function createPanelSlice(set: AppSet, get: AppGet): PanelSliceActions {
         isDirty: false,
       }
       return addAndPlacePanel(set, get, workspaceId, panel, withDefaultSize('agent', placement), position)
+    },
+
+    createMissionControl(workspaceId, position?, placement?) {
+      const panel: PanelState = {
+        id: generateId(),
+        type: 'missionControl',
+        title: 'Mission Control',
+        isDirty: false,
+      }
+      return addAndPlacePanel(set, get, workspaceId, panel, withDefaultSize('missionControl', placement), position)
     },
 
     // --- Panel management ---

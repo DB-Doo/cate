@@ -24,6 +24,7 @@ import {
   Trash,
   GraduationCap,
   PuzzlePiece,
+  Rocket,
   X,
   MapTrifold,
   Selection,
@@ -75,6 +76,7 @@ const DeleteRuntimeIcon = () => <Trash size={ICON_SIZE} />
 const TutorialIcon = () => <GraduationCap size={ICON_SIZE} />
 const SkillsIcon = () => <PuzzlePiece size={ICON_SIZE} />
 const AgentIcon = () => <CateLogo size={ICON_SIZE} />
+const MissionControlIcon = () => <Rocket size={ICON_SIZE} />
 const CloseIcon = () => <X size={ICON_SIZE} />
 const MinimapIcon = () => <MapTrifold size={ICON_SIZE} />
 const UndoIcon = () => <ArrowUUpLeft size={ICON_SIZE} />
@@ -107,7 +109,7 @@ type FlatItem =
   | { kind: 'file'; file: FileResult }
 
 // Panel types worth surfacing as navigable destinations.
-const NAVIGABLE_PANEL_TYPES: PanelType[] = ['terminal', 'editor', 'browser', 'agent', 'document']
+const NAVIGABLE_PANEL_TYPES: PanelType[] = ['terminal', 'editor', 'browser', 'agent', 'document', 'missionControl']
 
 // -----------------------------------------------------------------------------
 // Component
@@ -158,6 +160,7 @@ export const CommandPalette: React.FC = () => {
       { id: 'newBrowser', title: 'New Browser', icon: <GlobeIcon />, action: run('newBrowser') },
       { id: 'newEditor', title: 'New Editor', icon: <FileTextIcon />, action: run('newEditor') },
       { id: 'newAgent', title: 'New Cate Agent', icon: <AgentIcon />, action: run('newAgent') },
+      { id: 'newMissionControl', title: 'New Mission Control', icon: <MissionControlIcon />, action: run('newMissionControl') },
       { id: 'newCanvas', title: 'New Canvas', icon: <LayoutIcon />, action: run('newCanvas') },
       { id: 'closePanel', title: 'Close Panel', icon: <CloseIcon />, action: run('closePanel') },
       { id: 'saveFile', title: 'Save File', icon: <SaveIcon />, action: run('saveFile') },

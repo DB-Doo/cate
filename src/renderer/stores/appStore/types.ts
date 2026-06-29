@@ -72,6 +72,7 @@ export interface AppStoreActions {
   createCanvas: (workspaceId: string, position?: Point, placement?: PanelPlacement) => string
   createAgent: (workspaceId: string, position?: Point, placement?: PanelPlacement) => string
   createDocument: (workspaceId: string, filePath?: string, documentType?: 'pdf' | 'docx' | 'image', position?: Point, placement?: PanelPlacement) => string
+  createMissionControl: (workspaceId: string, position?: Point, placement?: PanelPlacement) => string
 
   // Ensure the center dock zone contains a canvas panel for the given workspace.
   // Covers session-restore and new-workspace paths where the center layout may

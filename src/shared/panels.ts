@@ -121,6 +121,17 @@ export const PANEL_DEFINITIONS: Record<PanelType, SharedPanelDefinition> = {
     ghostSvg: ghost('rgb(191,90,242)', '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>'),
     canLiveOnCanvas: false,
   },
+  missionControl: {
+    type: 'missionControl',
+    label: 'Mission Control',
+    brandColor: '#FF9F0A',
+    mutedColor: '#b07440',
+    tintClass: 'text-orange-400',
+    defaultSize: { width: 960, height: 680 },
+    minimumSize: { width: 480, height: 340 },
+    ghostSvg: ghost('rgb(255,159,10)', '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="13" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/>'),
+    canLiveOnCanvas: true,
+  },
 }
 
 /** Lookup helper. Falls back to the editor definition (matches the previous

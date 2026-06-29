@@ -19,6 +19,7 @@ import {
   FileText,
   SquaresFour,
   FileDoc,
+  Rocket,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
 import { CateLogo } from '../ui/CateLogo'
@@ -41,6 +42,7 @@ const BrowserPanel = React.lazy(() => import('./BrowserPanel'))
 const CanvasPanel = React.lazy(() => import('./CanvasPanel'))
 const AgentPanel = React.lazy(() => import('../../agent/renderer/AgentPanel'))
 const DocumentPanel = React.lazy(() => import('./DocumentPanel'))
+const MissionControlPanel = React.lazy(() => import('./MissionControlPanel'))
 
 // -----------------------------------------------------------------------------
 // Renderer definition
@@ -120,6 +122,13 @@ export const PANEL_REGISTRY: Record<PanelType, RendererPanelDefinition> = {
     Component: DocumentPanel,
     create: ({ workspaceId, canvasPoint, placement, filePath, documentType }) =>
       trackCreated('document', useAppStore.getState().createDocument(workspaceId, filePath, documentType, canvasPoint, placement) || null),
+  },
+  missionControl: {
+    ...PANEL_DEFINITIONS.missionControl,
+    icon: Rocket,
+    Component: MissionControlPanel,
+    create: ({ workspaceId, canvasPoint, placement }) =>
+      trackCreated('missionControl', useAppStore.getState().createMissionControl(workspaceId, canvasPoint, placement) || null),
   },
 }
 
