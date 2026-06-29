@@ -45,6 +45,7 @@ declare global {
       createTerminal(point: Point): string
       createEditor(point: Point): string
       createCanvasPanel(point: Point): string
+      createMissionControl(point: Point): string
       nodes(): { id: string; panelId: string; origin: Point; size: { width: number; height: number } }[]
       zoom(): number
       setZoom(z: number): void
@@ -142,6 +143,17 @@ export function installE2EHarness(): void {
     if (!cs) return ''
     const nodes = Object.values(cs.getState().nodes)
     return nodes.length ? nodes[nodes.length - 1].id : ''
+  }
+
+  const createMissionControl = (point: Point): string => {
+    const wsId = useAppStore.getState().selectedWorkspaceId
+    const panelId = useAppStore.getState().createMissionControl(wsId, point, { target: 'canvas' })
+    const cs = activeCanvasStore()
+    if (!cs) return panelId ?? ''
+    for (const n of Object.values(cs.getState().nodes)) {
+      if (n.panelId === panelId) return n.id
+    }
+    return panelId ?? ''
   }
 
   const nodes = () => {
@@ -256,6 +268,7 @@ export function installE2EHarness(): void {
     createTerminal,
     createEditor,
     createCanvasPanel,
+    createMissionControl,
     nodes,
     zoom,
     setZoom,

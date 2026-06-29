@@ -13,6 +13,8 @@ import {
   type Board,
 } from '../../shared/missionControl/index.js'
 import { openFileAsPanel } from '../lib/fs/fileRouting'
+import { getActiveCanvasOps } from '../lib/workspace/canvasAccess'
+import type { Point, PanelPlacement } from '../../shared/types'
 
 interface WorkspaceSummary {
   rootPath: string | null
@@ -170,7 +172,24 @@ const MissionControlPanel: React.FC<PanelProps> = ({ panelId, workspaceId }) => 
     if (!workspaceId || !rootPath) return
     setOutput('Opening agent panel...')
     try {
-      const agentPanelId = useAppStore.getState().createAgent(workspaceId, undefined, undefined)
+      // Place the agent panel next to this Mission Control node on the same
+      // canvas so it opens immediately instead of triggering the placement
+      // picker when no position is provided.
+      let placement: PanelPlacement | undefined
+      const ops = getActiveCanvasOps()
+      if (ops) {
+        const nodes = Object.values(ops.storeApi.getState().nodes)
+        const mcNode = nodes.find((n) => n.panelId === panelId)
+        if (mcNode) {
+          const position: Point = {
+            x: mcNode.origin.x + mcNode.size.width + 24,
+            y: mcNode.origin.y,
+          }
+          placement = { target: 'canvas', position }
+        }
+      }
+
+      const agentPanelId = useAppStore.getState().createAgent(workspaceId, undefined, placement)
       if (!agentPanelId) {
         setOutput('Failed to create agent panel.')
         return
@@ -185,7 +204,7 @@ const MissionControlPanel: React.FC<PanelProps> = ({ panelId, workspaceId }) => 
     } catch (err) {
       setOutput(`Agent error: ${err instanceof Error ? err.message : String(err)}`)
     }
-  }, [workspaceId, rootPath, prompt])
+  }, [workspaceId, rootPath, prompt, panelId])
 
   const openFile = useCallback(
     (path: string, _line?: number) => {
